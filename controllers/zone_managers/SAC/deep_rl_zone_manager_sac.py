@@ -45,20 +45,15 @@ class DeepRLZoneManagerSAC(ZoneManagerABC):
         Uses Deep RL (SAC) to decide where to offload a task.
         It suggests a node and returns (self, node).
         """
-        # دریافت وضعیت فعلی از محیط
         state = self.env._get_state(task)
-        # انتخاب یک عمل (action) با استفاده از عامل SAC
         action = self.agent.select_action(state)
 
         candidate_executor = None
         if action == 0:
-            # عمل 0: اجرای محلی (روی خود وسیله نقلیه)
             candidate_executor = task.creator
         elif action == 1:
-            # عمل 1: آف‌لود به بهترین نود مه (Fog Node)
             candidate_executor = self._get_best_fog_node(task)
         else:
-            # عمل 2: آف‌لود به ابر (Cloud)
             candidate_executor = self.env.simulator.cloud_node
 
         return self, candidate_executor
@@ -70,7 +65,6 @@ class DeepRLZoneManagerSAC(ZoneManagerABC):
         """
         creator = task.creator
         all_fog_nodes = list(self.fixed_fog_nodes.values()) + list(self.mobile_fog_nodes.values())
-        # فیلتر کردن نودهایی که قادر به اجرای وظیفه هستند
         eligible_nodes = [node for node in all_fog_nodes if node.can_offload_task(task)]
 
         if not eligible_nodes:
@@ -79,7 +73,6 @@ class DeepRLZoneManagerSAC(ZoneManagerABC):
         if len(eligible_nodes) == 1:
             return eligible_nodes[0]
 
-        # محاسبه فاصله هر نود واجد شرایط تا ایجادکننده وظیفه
         distances_by_id = {
             node.id: get_distance(node.x, node.y, creator.x, creator.y)
             for node in eligible_nodes
@@ -91,7 +84,6 @@ class DeepRLZoneManagerSAC(ZoneManagerABC):
         mobile_node_ids = {node.id for node in self.mobile_fog_nodes.values()}
 
         def calculate_score(node):
-            # نرمال‌سازی توان محاسباتی
             if node.id in mobile_node_ids:
                 normalized_power = node.power / Config.MobileFogNodeConfig.DEFAULT_COMPUTATION_POWER
             else:
@@ -99,18 +91,15 @@ class DeepRLZoneManagerSAC(ZoneManagerABC):
 
             distance = distances_by_id[node.id]
 
-            # نرمال‌سازی معکوس فاصله (فاصله کمتر، امتیاز بیشتر)
             if max_dist == min_dist:
                 normalized_distance = 0.0
             else:
                 normalized_distance = (distance - min_dist) / (max_dist - min_dist)
             distance_score = 1.0 - normalized_distance
 
-            # امتیاز نهایی ترکیبی از توان و فاصله است
             final_score = (0.5 * normalized_power) + (0.5 * distance_score)
             return final_score
 
-        # انتخاب نودی که بالاترین امتیاز را دارد
         chosen_node = max(
             eligible_nodes,
             key=calculate_score,
@@ -123,12 +112,8 @@ class DeepRLZoneManagerSAC(ZoneManagerABC):
         """
         Updates the RL agent by training it with experiences from the replay buffer.
         """
-        # آموزش عامل با استفاده از تجربیات ذخیره شده
-        # در SAC، آپدیت شبکه هدف به صورت نرم و درون خود متد train انجام می‌شود
         self.agent.train()
 
-    # این متد دیگر ضروری نیست، چون انتخاب نهایی در شبیه‌ساز انجام می‌شود
-    # اما برای کامل بودن کلاس، آن را نگه می‌داریم
     def assign_task(self, task: Task) -> FogLayerABC:
         """
         Note: This method is less relevant in the current simulation flow

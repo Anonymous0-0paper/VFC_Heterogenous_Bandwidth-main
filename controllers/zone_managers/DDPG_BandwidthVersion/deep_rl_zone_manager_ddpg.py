@@ -1,10 +1,7 @@
-# deep_rl_zone_manager_ddpg.py
-
 import numpy as np
 from typing import Unpack
 
 from controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate
-# ایمپورت کردن عامل DDPG به جای عامل DQN
 from controllers.zone_managers.DDPG_BandwidthVersion.ddpg_agent import DDPGAgent
 from controllers.zone_managers.DeepRL_BandwidthVersion.deep_rl_env import DeepRLEnvironment
 from controllers.zone_managers.heuristic import HeuristicZoneManager
@@ -22,15 +19,10 @@ class DeepRLZoneManager_DDPG(ZoneManagerABC):
     def __init__(self, zone):
         super().__init__(zone)
 
-        # مقداردهی اولیه عامل DDPG
-        # state_dim: تعداد ویژگی‌های حالت (6)
-        # action_dim: بعد فضای عمل (1، چون خروجی یک عدد پیوسته است)
-        # max_action: حداکثر مقدار خروجی عمل (1.0، چون از تابع tanh استفاده می‌کنیم)
         self.agent = DDPGAgent(state_dim=6, action_dim=1, max_action=1.0)
 
         self.env = None
 
-        # بارگذاری مدل از پیش آموزش‌دیده در صورت وجود
         try:
             self.agent.load_model("ddpg_model")
             print("[DDPG] Loaded pre-trained model.")
@@ -52,12 +44,6 @@ class DeepRLZoneManager_DDPG(ZoneManagerABC):
         return any(node.can_offload_task(task) for node in available_nodes)
 
     def assign_task(self, task: Task) -> FogLayerABC:
-        """
-        یک گره مناسب را برای وظیفه برمی‌گرداند.
-        نکته: در معماری MADDPG ما، این متد مستقیماً توسط حلقه اصلی شبیه‌ساز فراخوانی نمی‌شود،
-        زیرا تصمیم‌گیری به صورت متمرکز انجام می‌شود. اما برای سازگاری با کلاس پایه،
-        یک پیاده‌سازی منطقی (پیدا کردن بهترین گره) در اینجا ارائه می‌شود.
-        """
         return self._get_best_fog_node(task)
 
     def propose_candidate(self, task: Task, current_time: float):
@@ -65,22 +51,17 @@ class DeepRLZoneManager_DDPG(ZoneManagerABC):
         Uses DDPG to decide where to offload a task.
         It suggests a node and returns the zone manager, the node, and the continuous action.
         """
-        # دریافت حالت فعلی از محیط
         state = self.env._get_state(task)
 
-        # انتخاب یک عمل پیوسته توسط عامل DDPG
-        # خروجی یک آرایه است، ما به اولین عنصر آن نیاز داریم
         continuous_action = self.agent.select_action(state)[0]
 
-        # نگاشت خروجی پیوسته (بین -1.0 و 1.0) به یک عمل گسسته (0, 1, 2)
         if continuous_action < -0.33:
-            discrete_action = 0  # تصمیم: پردازش محلی (Local)
+            discrete_action = 0 
         elif continuous_action < 0.33:
-            discrete_action = 2  # تصمیم: ارسال به ابر (cloud)
+            discrete_action = 2 
         else:
-            discrete_action = 1  # تصمیم: ارسال به مه (fog)
+            discrete_action = 1
 
-        # انتخاب اجراکننده کاندید بر اساس عمل گسسته
         if discrete_action == 0:
             candidate_executor = task.creator
         elif discrete_action == 1:
@@ -88,8 +69,6 @@ class DeepRLZoneManager_DDPG(ZoneManagerABC):
         else:
             candidate_executor = self.env.simulator.cloud_node
 
-        # برگرداندن خود مدیر منطقه، اجراکننده کاندید و عمل پیوسته اصلی
-        # عمل پیوسته برای ذخیره در بافر تجربه (Replay Buffer) لازم است
         return self, candidate_executor, continuous_action
 
     def _get_best_fog_node(self, task):
@@ -143,6 +122,4 @@ class DeepRLZoneManager_DDPG(ZoneManagerABC):
         """
         Updates the DDPG agent by training it on a batch of experiences.
         """
-        # آموزش عامل با یک بچ از تجربیات ذخیره شده
-        # به‌روزرسانی شبکه‌های هدف به صورت "soft update" در داخل متد train انجام می‌شود
         self.agent.train()

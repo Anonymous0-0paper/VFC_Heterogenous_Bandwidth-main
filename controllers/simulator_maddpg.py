@@ -4,7 +4,6 @@ import numpy as np
 from collections import defaultdict
 from typing import Dict, List
 
-# --- وارد کردن نیازمندی‌های شبیه‌ساز ساده‌شده ---
 from config import Config
 from controllers.loader import Loader
 from controllers.metric import MetricsController, green_bg
@@ -16,16 +15,13 @@ from models.task import Task
 from utils.clock import Clock
 from utils.enums import Layer
 
-# استفاده از FinalChoice ساده‌شده
 from controllers.finalChoice import FinalChoice
 
-# وارد کردن اجزای MADDPG
 from controllers.zone_managers.MADDPG.maddpg_controller import MADDPGController
 from controllers.maddpg_utils import get_agent_state, compute_agent_reward
 from controllers.zone_managers.MADDPG.deep_rl_zone_manager_maddpg import DeepRLZoneManagerMADDGP
 import pandas as pd
 
-# توابع کمکی برای لاگ رنگی
 def blue_bg(text): return f"\033[44m{text}\033[0m"
 
 
@@ -45,7 +41,6 @@ class SimulatorMADDPG:
         self.task_zone_managers: Dict[str, DeepRLZoneManagerMADDGP] = {}
         self.maddpg_controller: MADDPGController = None
         self.agents: List[DeepRLZoneManagerMADDGP] = []
-        # اضافه شدن مکانیزم ارسال مجدد
         self.retransmission_tasks: Dict[float, List[Task]] = defaultdict(list)
         self.training_step_counter = 0
         self.missed_deadline_data: List[Dict] = []
@@ -96,22 +91,18 @@ class SimulatorMADDPG:
                 participating_managers = merged_possible_zones.get(creator_id, [])
                 if not participating_managers:
                     for task in tasks:
-                        # اگر مدیری در دسترس نیست، به سیاست پیش‌فرض بازگرد
                         self.handle_no_zone_manager(task, current_time)
                     continue
 
                 for task in tasks:
                     self.metrics.inc_total_tasks()
 
-                    # 1. جمع‌آوری وضعیت برای عامل‌های درگیر
                     current_states = {zm.agent_id: get_agent_state(task, self) for zm in participating_managers}
                     ordered_states = [current_states.get(i, np.zeros(self.maddpg_controller.state_dims[i])) for i in
                                       range(self.maddpg_controller.num_agents)]
 
-                    # 2. انتخاب عمل از کنترلر مرکزی
                     actions = self.maddpg_controller.select_actions(ordered_states)
 
-                    # 3. تبدیل عمل‌ها به پیشنهادهای اجرایی (zone_manager, executor)
                     proposals = []
                     for zm in participating_managers:
                         agent_action = actions[zm.agent_id]
@@ -125,32 +116,25 @@ class SimulatorMADDPG:
                         if executor:
                             proposals.append((zm, executor))
 
-                    # 4. انتخاب نهایی و تخصیص وظیفه
                     chosen_zone_manager, final_executor = self.choose_executor_and_assign(proposals, task, current_time)
 
-                    # 5. محاسبه پاداش و ذخیره تجربه
                     rewards = np.zeros(self.maddpg_controller.num_agents)
                     if chosen_zone_manager:
                         chosen_agent_id = chosen_zone_manager.agent_id
                         # print(blue_bg(f"{chosen_zone_manager.agent_id}"))
-                        # عامل برنده پاداش اصلی را می‌گیرد
                         rewards[chosen_agent_id] = compute_agent_reward(task, final_executor, self.fixed_fog_nodes)
                     else:
-                        # اگر هیچ گزینه‌ای انتخاب نشد یا تخصیص ناموفق بود
                         for zm, _ in proposals:
-                            rewards[zm.agent_id] = -5.0  # جریمه برای پیشنهاد ناموفق
+                            rewards[zm.agent_id] = -5.0
 
-                    # 6. جمع‌آوری وضعیت بعدی
                     next_states = {zm.agent_id: get_agent_state(task, self) for zm in participating_managers}
                     ordered_next_states = [next_states.get(i, np.zeros(self.maddpg_controller.state_dims[i])) for i in
                                            range(self.maddpg_controller.num_agents)]
 
-                    # 7. ذخیره تجربه
                     dones = np.zeros(self.maddpg_controller.num_agents)
                     self.maddpg_controller.store_experience(ordered_states, actions, rewards, ordered_next_states,
                                                             dones)
 
-                    # 8. آموزش شبکه (با فرکانس کمتر)
                     # self.training_step_counter += 1
                     # if self.training_step_counter % 10 == 0:
                     #     self.maddpg_controller.train()
@@ -167,14 +151,11 @@ class SimulatorMADDPG:
         self.metrics.save_to_excel(f"final_metrics_summary_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.FinalDeciderMethod.DEFAULT_METHOD}_{Config.Scenario.DEFAULT_SCENARIO}.xlsx")
 
     def choose_executor_and_assign(self, proposals: List, task: Task, current_time: float):
-        """
-        از بین پیشنهادهای داده شده، بهترین را انتخاب و وظیفه را تخصیص می‌دهد.
-        این نسخه ساده‌شده و بدون نویز است.
-        """
+
         if not proposals:
             if task.creator.can_offload_task(task):
                 task.creator.assign_task(task, current_time)
-                return None, task.creator  # بازگشت غیررسمی برای نشان دادن موفقیت
+                return None, task.creator
             else:
                 self.offload_to_cloud(task, current_time)
                 return None, self.cloud_node
@@ -188,21 +169,18 @@ class SimulatorMADDPG:
             chosen_executor.assign_task(task, current_time)
             return chosen_zone_manager, chosen_executor
         else:
-            # اگر انتخاب نهایی نامعتبر بود، ارسال مجدد
             self.schedule_retransmission(task, current_time + 1)
             return None, None
 
     def handle_retransmissions(self, merged_zones, current_time):
         tasks_to_retransmit = self.retransmission_tasks.pop(current_time, [])
         for task in tasks_to_retransmit:
-            # منطق ارسال مجدد مشابه منطق اصلی اجرا می‌شود
             participating_managers = merged_zones.get(task.creator.id, [])
             if not participating_managers:
                 self.handle_no_zone_manager(task, current_time)
                 continue
 
     def handle_no_zone_manager(self, task, current_time):
-        """سیاست پیش‌فرض وقتی هیچ ZoneManager ای در دسترس نیست."""
         if task.creator.can_offload_task(task):
             task.creator.assign_task(task, current_time)
             self.metrics.inc_local_execution()
@@ -221,7 +199,6 @@ class SimulatorMADDPG:
         else:
             self.metrics.inc_no_resource_found()
 
-    # --- بقیه توابع که در نسخه‌های قبلی هم کامل بودند ---
     def load_tasks(self, current_time: float) -> Dict[str, List[Task]]:
         tasks: Dict[str, List[Task]] = defaultdict(list)
         for creator_id, creator_tasks in self.loader.load_nodes_tasks(current_time).items():
@@ -341,7 +318,6 @@ class SimulatorMADDPG:
         full_path = os.path.join(output_dir, filename)
 
         df = pd.DataFrame(self.missed_deadline_data)
-        # index=False از نوشتن ایندکس ردیف‌ها در فایل جلوگیری می‌کند
         try:
             df.to_excel(full_path, index=False)
             print(green_bg(f"Successfully saved missed deadline data to {filename}"))

@@ -26,12 +26,7 @@ class DeepRLZoneManagerPPO(ZoneManagerABC):
         self.env = DeepRLEnvironment(simulator)
 
     def propose_candidate(self, task: Task, current_time: float):
-        """
-        استفاده از PPO برای پیشنهاد یک گره اجرایی.
-        این تابع حالا اطلاعات بیشتری را برای ذخیره‌سازی برمی‌گرداند.
-        """
         state = self.env._get_state(task)
-        # select_action حالا اطلاعات بیشتری برمی‌گرداند
         action, log_prob, value = self.agent.select_action(state)
 
         if action == 0:
@@ -44,14 +39,8 @@ class DeepRLZoneManagerPPO(ZoneManagerABC):
         return self, candidate_executor, (state, action, log_prob, value)
 
     def update(self, **kwargs: Unpack[ZoneManagerUpdate]):
-        """
-        این تابع دیگر مستقیماً عامل را آموزش نمی‌دهد.
-        آموزش به صورت دوره‌ای توسط شبیه‌ساز فراخوانی می‌شود.
-        می‌توانیم در آینده منطق‌های دیگری اینجا اضافه کنیم.
-        """
         pass
 
-    # ... بقیه توابع کلاس بدون تغییر باقی می‌مانند ...
     def can_offload_task(self, task: Task) -> bool:
         """
         Checks if there is an available node to offload the task.

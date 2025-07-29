@@ -301,7 +301,6 @@ class BalancedZoneGenerator:
 
         if uncovered_node_ids:
             print(f"Found {len(uncovered_node_ids)} uncovered nodes:")
-            # چاپ شناسه‌ها به صورت جدا شده با ویرگول
             print(", ".join(sorted(list(uncovered_node_ids))))
             print("\n")
         else:
