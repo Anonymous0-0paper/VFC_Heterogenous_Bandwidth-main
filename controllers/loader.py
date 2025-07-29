@@ -3,7 +3,6 @@ from collections import defaultdict
 from typing import Type
 
 from NoiseConfigs.utilsFunctions import UtilsFunc
-from controllers.zone_managers.MADDPG.deep_rl_zone_manager_maddpg import DeepRLZoneManagerMADDGP
 from controllers.zone_managers.STGT import STGTZoneManager
 from controllers.zone_managers.base import ZoneManagerABC
 from controllers.zone_managers.heuristic import HeuristicZoneManager
@@ -35,7 +34,6 @@ class Loader:
         Config.ZoneManagerConfig.ALGORITHM_ONLY_CLOUD: OnlyCloudZoneManager,
         Config.ZoneManagerConfig.ALGORITHM_ONLY_FOG: OnlyFogZoneManager,
         Config.ZoneManagerConfig.ALGORITHM_DEEP_RL: DeepRLZoneManager,
-        Config.ZoneManagerConfig.ALGORITHM_MADDPG: DeepRLZoneManagerMADDGP,
         Config.ZoneManagerConfig.ALGORITHM_DDPG: DeepRLZoneManager_DDPG,
         Config.ZoneManagerConfig.ALGORITHM_PPO: DeepRLZoneManagerPPO,
         Config.ZoneManagerConfig.ALGORITHM_SAC: DeepRLZoneManagerSAC,
