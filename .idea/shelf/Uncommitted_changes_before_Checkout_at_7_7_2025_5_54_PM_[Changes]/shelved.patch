@@ -1,0 +1,640 @@
+Index: controllers/zone_managers/deep_rl_agent.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import torch\r\nimport torch.nn as nn\r\nimport torch.optim as optim\r\nimport random\r\nimport numpy as np\r\nfrom collections import deque\r\n\r\n\r\nclass DQN(nn.Module):\r\n    \"\"\"\r\n    Neural network for Deep Q-Learning.\r\n    \"\"\"\r\n    def __init__(self, input_dim, output_dim):\r\n        super(DQN, self).__init__()\r\n        self.fc1 = nn.Linear(input_dim, 128)\r\n        self.fc2 = nn.Linear(128, 64)\r\n        self.fc3 = nn.Linear(64, output_dim)\r\n\r\n    def forward(self, x):\r\n        x = torch.relu(self.fc1(x))\r\n        x = torch.relu(self.fc2(x))\r\n        return self.fc3(x)\r\n\r\n\r\nclass DeepRLAgent:\r\n    \"\"\"\r\n    Deep Q-Learning Agent for Task Offloading.\r\n    \"\"\"\r\n    def __init__(self, state_dim, action_dim, lr=0.001, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, min_epsilon=0.01):\r\n        self.state_dim = state_dim\r\n        self.action_dim = action_dim\r\n        self.gamma = gamma  # Discount factor\r\n        self.epsilon = epsilon  # Exploration probability\r\n        self.epsilon_decay = epsilon_decay\r\n        self.min_epsilon = min_epsilon\r\n        self.lr = lr\r\n\r\n        # Experience Replay Memory\r\n        self.memory = deque(maxlen=10000)\r\n\r\n        # Neural Networks\r\n        self.model = DQN(state_dim, action_dim)\r\n        self.target_model = DQN(state_dim, action_dim)\r\n        self.target_model.load_state_dict(self.model.state_dict())\r\n\r\n        # Optimizer and Loss Function\r\n        self.optimizer = optim.Adam(self.model.parameters(), lr=lr)\r\n        self.criterion = nn.MSELoss()\r\n\r\n    def select_action(self, state):\r\n        \"\"\"\r\n        Select an action using ε-greedy strategy.\r\n        \"\"\"\r\n        if random.random() < self.epsilon:\r\n            return random.randint(0, self.action_dim - 1)  # Explore\r\n        state_tensor = torch.FloatTensor(state).unsqueeze(0)\r\n        with torch.no_grad():\r\n            q_values = self.model(state_tensor)\r\n        return torch.argmax(q_values).item()  # Exploit\r\n\r\n    def store_experience(self, state, action, reward, next_state, done):\r\n        \"\"\"\r\n        Store experience in memory.\r\n        \"\"\"\r\n        self.memory.append((state, action, reward, next_state, done))\r\n\r\n    def train(self, batch_size=32):\r\n        \"\"\"\r\n        Train the Deep Q-Network.\r\n        \"\"\"\r\n        if len(self.memory) < batch_size:\r\n            return\r\n\r\n        batch = random.sample(self.memory, batch_size)\r\n        states, actions, rewards, next_states, dones = zip(*batch)\r\n\r\n        states = torch.FloatTensor(states)\r\n        actions = torch.LongTensor(actions).unsqueeze(1)\r\n        rewards = torch.FloatTensor(rewards)\r\n        next_states = torch.FloatTensor(next_states)\r\n        dones = torch.FloatTensor(dones)\r\n\r\n        # Compute Q-values\r\n        q_values = self.model(states).gather(1, actions).squeeze()\r\n\r\n        # Compute Target Q-values\r\n        with torch.no_grad():\r\n            next_q_values = self.target_model(next_states).max(1)[0]\r\n            targets = rewards + self.gamma * next_q_values * (1 - dones)\r\n\r\n        # Update Model\r\n        loss = self.criterion(q_values, targets)\r\n        self.optimizer.zero_grad()\r\n        loss.backward()\r\n        self.optimizer.step()\r\n\r\n        # Decay epsilon\r\n        self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)\r\n\r\n    def update_target_network(self):\r\n        \"\"\"\r\n        Update target model parameters.\r\n        \"\"\"\r\n        self.target_model.load_state_dict(self.model.state_dict())\r\n\r\n    def save_model(self, filename=\"deep_rl_model.pth\"):\r\n        \"\"\"\r\n        Save trained model.\r\n        \"\"\"\r\n        torch.save(self.model.state_dict(), filename)\r\n\r\n    def load_model(self, filename=\"deep_rl_model.pth\"):\r\n        \"\"\"\r\n        Load trained model.\r\n        \"\"\"\r\n        self.model.load_state_dict(torch.load(filename))\r\n        self.target_model.load_state_dict(self.model.state_dict())\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/deep_rl_agent.py b/controllers/zone_managers/deep_rl_agent.py
+--- a/controllers/zone_managers/deep_rl_agent.py	(revision e9e7aa2813a3aefe5c0f30d2a5a2fa7f55da4328)
++++ b/controllers/zone_managers/deep_rl_agent.py	(date 1751898204954)
+@@ -1,117 +1,0 @@
+-import torch
+-import torch.nn as nn
+-import torch.optim as optim
+-import random
+-import numpy as np
+-from collections import deque
+-
+-
+-class DQN(nn.Module):
+-    """
+-    Neural network for Deep Q-Learning.
+-    """
+-    def __init__(self, input_dim, output_dim):
+-        super(DQN, self).__init__()
+-        self.fc1 = nn.Linear(input_dim, 128)
+-        self.fc2 = nn.Linear(128, 64)
+-        self.fc3 = nn.Linear(64, output_dim)
+-
+-    def forward(self, x):
+-        x = torch.relu(self.fc1(x))
+-        x = torch.relu(self.fc2(x))
+-        return self.fc3(x)
+-
+-
+-class DeepRLAgent:
+-    """
+-    Deep Q-Learning Agent for Task Offloading.
+-    """
+-    def __init__(self, state_dim, action_dim, lr=0.001, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, min_epsilon=0.01):
+-        self.state_dim = state_dim
+-        self.action_dim = action_dim
+-        self.gamma = gamma  # Discount factor
+-        self.epsilon = epsilon  # Exploration probability
+-        self.epsilon_decay = epsilon_decay
+-        self.min_epsilon = min_epsilon
+-        self.lr = lr
+-
+-        # Experience Replay Memory
+-        self.memory = deque(maxlen=10000)
+-
+-        # Neural Networks
+-        self.model = DQN(state_dim, action_dim)
+-        self.target_model = DQN(state_dim, action_dim)
+-        self.target_model.load_state_dict(self.model.state_dict())
+-
+-        # Optimizer and Loss Function
+-        self.optimizer = optim.Adam(self.model.parameters(), lr=lr)
+-        self.criterion = nn.MSELoss()
+-
+-    def select_action(self, state):
+-        """
+-        Select an action using ε-greedy strategy.
+-        """
+-        if random.random() < self.epsilon:
+-            return random.randint(0, self.action_dim - 1)  # Explore
+-        state_tensor = torch.FloatTensor(state).unsqueeze(0)
+-        with torch.no_grad():
+-            q_values = self.model(state_tensor)
+-        return torch.argmax(q_values).item()  # Exploit
+-
+-    def store_experience(self, state, action, reward, next_state, done):
+-        """
+-        Store experience in memory.
+-        """
+-        self.memory.append((state, action, reward, next_state, done))
+-
+-    def train(self, batch_size=32):
+-        """
+-        Train the Deep Q-Network.
+-        """
+-        if len(self.memory) < batch_size:
+-            return
+-
+-        batch = random.sample(self.memory, batch_size)
+-        states, actions, rewards, next_states, dones = zip(*batch)
+-
+-        states = torch.FloatTensor(states)
+-        actions = torch.LongTensor(actions).unsqueeze(1)
+-        rewards = torch.FloatTensor(rewards)
+-        next_states = torch.FloatTensor(next_states)
+-        dones = torch.FloatTensor(dones)
+-
+-        # Compute Q-values
+-        q_values = self.model(states).gather(1, actions).squeeze()
+-
+-        # Compute Target Q-values
+-        with torch.no_grad():
+-            next_q_values = self.target_model(next_states).max(1)[0]
+-            targets = rewards + self.gamma * next_q_values * (1 - dones)
+-
+-        # Update Model
+-        loss = self.criterion(q_values, targets)
+-        self.optimizer.zero_grad()
+-        loss.backward()
+-        self.optimizer.step()
+-
+-        # Decay epsilon
+-        self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)
+-
+-    def update_target_network(self):
+-        """
+-        Update target model parameters.
+-        """
+-        self.target_model.load_state_dict(self.model.state_dict())
+-
+-    def save_model(self, filename="deep_rl_model.pth"):
+-        """
+-        Save trained model.
+-        """
+-        torch.save(self.model.state_dict(), filename)
+-
+-    def load_model(self, filename="deep_rl_model.pth"):
+-        """
+-        Load trained model.
+-        """
+-        self.model.load_state_dict(torch.load(filename))
+-        self.target_model.load_state_dict(self.model.state_dict())
+Index: controllers/zone_managers/deep_rl_env.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import numpy as np\r\nimport gym\r\nfrom gym import spaces\r\nfrom config import Config\r\nfrom controllers.metric import MetricsController\r\nfrom models.node.cloud import CloudNode\r\nfrom models.node.fog import FixedFogNode, MobileFogNode\r\nfrom models.node.user import UserNode\r\nfrom models.task import Task\r\n\r\n\r\nclass DeepRLEnvironment(gym.Env):\r\n    \"\"\"\r\n    Custom environment for RL-based task offloading.\r\n    \"\"\"\r\n    def __init__(self, simulator):\r\n        super(DeepRLEnvironment, self).__init__()\r\n\r\n        self.simulator = simulator  # Reference to the existing simulation\r\n        self.metrics = simulator.metrics  # Track performance\r\n\r\n        # Define action space: (Where to offload the task?)\r\n        self.action_space = spaces.Discrete(3)  # 0: Local, 1: Fog, 2: Cloud\r\n\r\n        # Define state space: (What information do we use to make decisions?)\r\n        self.observation_space = spaces.Box(\r\n            low=0, high=1, shape=(5,), dtype=np.float32\r\n        )\r\n\r\n    def reset(self):\r\n        \"\"\"Reset the environment to start a new episode.\"\"\"\r\n        self.simulator.init_simulation()\r\n        return self._get_state()\r\n\r\n    def step(self, action):\r\n        \"\"\"Execute an action and return the next state, reward, and done flag.\"\"\"\r\n        task = self.simulator.get_next_task()  # Get the next task to process\r\n\r\n        if task is None:\r\n            return self._get_state(), 0, True, {}  # No task left, episode ends\r\n\r\n        reward = self._execute_action(task, action)  # Execute offloading\r\n        next_state = self._get_state()\r\n        done = self.simulator.clock.get_current_time() >= Config.SimulatorConfig.SIMULATION_DURATION\r\n\r\n        return next_state, reward, done, {}\r\n\r\n    def _execute_action(self, task, action):\r\n        \"\"\"Perform the task offloading based on the action and return the reward.\"\"\"\r\n        if action == 0:\r\n            executor = task.creator  # Local execution\r\n        elif action == 1:\r\n            executor = self._get_best_fog_node(task)  # Offload to fog\r\n        else:\r\n            executor = self.simulator.cloud_node  # Offload to cloud\r\n\r\n        if executor and executor.can_offload_task(task):\r\n            executor.assign_task(task, self.simulator.clock.get_current_time())\r\n            reward = self._compute_reward(task, executor)\r\n        else:\r\n            reward = -1  # Task couldn't be offloaded\r\n\r\n        return reward\r\n\r\n    def _get_best_fog_node(self, task):\r\n        \"\"\"Find a suitable fog node for task execution.\"\"\"\r\n        fog_nodes = list(self.simulator.mobile_fog_nodes.values()) + list(self.simulator.fixed_fog_nodes.values())\r\n        fog_nodes = [node for node in fog_nodes if node.can_offload_task(task)]\r\n        return min(fog_nodes, key=lambda n: n.remaining_power, default=None)\r\n\r\n    def _compute_reward(self, task, executor):\r\n        \"\"\"Compute the reward based on execution success, latency, and power efficiency.\"\"\"\r\n        if executor == task.creator:\r\n            return 1.0  # Local execution is preferred (low cost)\r\n        elif isinstance(executor, (FixedFogNode, MobileFogNode)):\r\n            return 2.0  # Fog execution is better than cloud\r\n        else:\r\n            return 0.5  # Cloud execution has higher cost\r\n\r\n    def _get_state(self):\r\n        \"\"\"Extract system state features for the RL agent.\"\"\"\r\n        total_tasks = self.metrics.total_tasks or 1\r\n        return np.array([\r\n            self.metrics.completed_tasks / total_tasks,  # Task completion ratio\r\n            self.metrics.deadline_misses / total_tasks,  # Deadline miss ratio\r\n            self.metrics.migrations_count / total_tasks,  # Migration ratio\r\n            self.metrics.cloud_tasks / total_tasks,  # Cloud usage ratio\r\n            self.simulator.clock.get_current_time() / Config.SimulatorConfig.SIMULATION_DURATION  # Time progress\r\n        ], dtype=np.float32)\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/deep_rl_env.py b/controllers/zone_managers/deep_rl_env.py
+--- a/controllers/zone_managers/deep_rl_env.py	(revision e9e7aa2813a3aefe5c0f30d2a5a2fa7f55da4328)
++++ b/controllers/zone_managers/deep_rl_env.py	(date 1751898204954)
+@@ -1,89 +1,0 @@
+-import numpy as np
+-import gym
+-from gym import spaces
+-from config import Config
+-from controllers.metric import MetricsController
+-from models.node.cloud import CloudNode
+-from models.node.fog import FixedFogNode, MobileFogNode
+-from models.node.user import UserNode
+-from models.task import Task
+-
+-
+-class DeepRLEnvironment(gym.Env):
+-    """
+-    Custom environment for RL-based task offloading.
+-    """
+-    def __init__(self, simulator):
+-        super(DeepRLEnvironment, self).__init__()
+-
+-        self.simulator = simulator  # Reference to the existing simulation
+-        self.metrics = simulator.metrics  # Track performance
+-
+-        # Define action space: (Where to offload the task?)
+-        self.action_space = spaces.Discrete(3)  # 0: Local, 1: Fog, 2: Cloud
+-
+-        # Define state space: (What information do we use to make decisions?)
+-        self.observation_space = spaces.Box(
+-            low=0, high=1, shape=(5,), dtype=np.float32
+-        )
+-
+-    def reset(self):
+-        """Reset the environment to start a new episode."""
+-        self.simulator.init_simulation()
+-        return self._get_state()
+-
+-    def step(self, action):
+-        """Execute an action and return the next state, reward, and done flag."""
+-        task = self.simulator.get_next_task()  # Get the next task to process
+-
+-        if task is None:
+-            return self._get_state(), 0, True, {}  # No task left, episode ends
+-
+-        reward = self._execute_action(task, action)  # Execute offloading
+-        next_state = self._get_state()
+-        done = self.simulator.clock.get_current_time() >= Config.SimulatorConfig.SIMULATION_DURATION
+-
+-        return next_state, reward, done, {}
+-
+-    def _execute_action(self, task, action):
+-        """Perform the task offloading based on the action and return the reward."""
+-        if action == 0:
+-            executor = task.creator  # Local execution
+-        elif action == 1:
+-            executor = self._get_best_fog_node(task)  # Offload to fog
+-        else:
+-            executor = self.simulator.cloud_node  # Offload to cloud
+-
+-        if executor and executor.can_offload_task(task):
+-            executor.assign_task(task, self.simulator.clock.get_current_time())
+-            reward = self._compute_reward(task, executor)
+-        else:
+-            reward = -1  # Task couldn't be offloaded
+-
+-        return reward
+-
+-    def _get_best_fog_node(self, task):
+-        """Find a suitable fog node for task execution."""
+-        fog_nodes = list(self.simulator.mobile_fog_nodes.values()) + list(self.simulator.fixed_fog_nodes.values())
+-        fog_nodes = [node for node in fog_nodes if node.can_offload_task(task)]
+-        return min(fog_nodes, key=lambda n: n.remaining_power, default=None)
+-
+-    def _compute_reward(self, task, executor):
+-        """Compute the reward based on execution success, latency, and power efficiency."""
+-        if executor == task.creator:
+-            return 1.0  # Local execution is preferred (low cost)
+-        elif isinstance(executor, (FixedFogNode, MobileFogNode)):
+-            return 2.0  # Fog execution is better than cloud
+-        else:
+-            return 0.5  # Cloud execution has higher cost
+-
+-    def _get_state(self):
+-        """Extract system state features for the RL agent."""
+-        total_tasks = self.metrics.total_tasks or 1
+-        return np.array([
+-            self.metrics.completed_tasks / total_tasks,  # Task completion ratio
+-            self.metrics.deadline_misses / total_tasks,  # Deadline miss ratio
+-            self.metrics.migrations_count / total_tasks,  # Migration ratio
+-            self.metrics.cloud_tasks / total_tasks,  # Cloud usage ratio
+-            self.simulator.clock.get_current_time() / Config.SimulatorConfig.SIMULATION_DURATION  # Time progress
+-        ], dtype=np.float32)
+Index: controllers/zone_managers/hrl/sac.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import random\r\n\r\nimport numpy as np\r\nimport torch\r\nimport torch.nn as nn\r\nfrom torch.distributions import Normal\r\n\r\n\r\nclass SACNetwork(nn.Module):\r\n    def __init__(self, state_dim, action_dim, hidden_dim=64):\r\n        super().__init__()\r\n        self.state_dim = state_dim\r\n        self.action_dim = action_dim\r\n\r\n        # Actor network\r\n        self.actor = nn.Sequential(\r\n            nn.Linear(state_dim, hidden_dim),\r\n            nn.ReLU(),\r\n            nn.Linear(hidden_dim, hidden_dim),\r\n            nn.ReLU()\r\n        )\r\n        self.mean = nn.Linear(hidden_dim, action_dim)\r\n        self.log_std = nn.Linear(hidden_dim, action_dim)\r\n\r\n        # Critic networks (twin Q-networks)\r\n        self.critic1 = nn.Sequential(\r\n            nn.Linear(state_dim + action_dim, hidden_dim),\r\n            nn.ReLU(),\r\n            nn.Linear(hidden_dim, hidden_dim),\r\n            nn.ReLU(),\r\n            nn.Linear(hidden_dim, 1)\r\n        )\r\n\r\n        self.critic2 = nn.Sequential(\r\n            nn.Linear(state_dim + action_dim, hidden_dim),\r\n            nn.ReLU(),\r\n            nn.Linear(hidden_dim, hidden_dim),\r\n            nn.ReLU(),\r\n            nn.Linear(hidden_dim, 1)\r\n        )\r\n\r\n    def forward(self, state):\r\n        x = self.actor(state)\r\n        mean = self.mean(x)\r\n        log_std = self.log_std(x)\r\n        log_std = torch.clamp(log_std, -20, 2)\r\n        return mean, log_std\r\n\r\n    def sample(self, state):\r\n        mean, log_std = self(state)\r\n        std = log_std.exp()\r\n        normal = Normal(mean, std)\r\n        x = normal.rsample()\r\n        action = torch.tanh(x)\r\n        log_prob = normal.log_prob(x)\r\n        log_prob -= torch.log(1 - action.pow(2) + 1e-6)\r\n        return action, log_prob.sum(1, keepdim=True)\r\n\r\n    def get_q_values(self, state, action):\r\n        sa = torch.cat([state, action], 1)\r\n        q1 = self.critic1(sa)\r\n        q2 = self.critic2(sa)\r\n        return q1, q2\r\n\r\n\r\nclass SACMemory:\r\n    def __init__(self, capacity):\r\n        self.capacity = capacity\r\n        self.buffer = []\r\n        self.position = 0\r\n\r\n    def push(self, state, action, reward, next_state, done):\r\n        if len(self.buffer) < self.capacity:\r\n            self.buffer.append(None)\r\n        self.buffer[self.position] = (state, action, reward, next_state, done)\r\n        self.position = (self.position + 1) % self.capacity\r\n\r\n    def sample(self, batch_size):\r\n        batch = random.sample(self.buffer, batch_size)\r\n        state, action, reward, next_state, done = map(np.stack, zip(*batch))\r\n        return (\r\n            torch.FloatTensor(state),\r\n            torch.FloatTensor(action),\r\n            torch.FloatTensor(reward).unsqueeze(1),\r\n            torch.FloatTensor(next_state),\r\n            torch.FloatTensor(done).unsqueeze(1)\r\n        )\r\n\r\n    def __len__(self):\r\n        return len(self.buffer)\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/hrl/sac.py b/controllers/zone_managers/hrl/sac.py
+--- a/controllers/zone_managers/hrl/sac.py	(revision e9e7aa2813a3aefe5c0f30d2a5a2fa7f55da4328)
++++ b/controllers/zone_managers/hrl/sac.py	(date 1751898204954)
+@@ -1,90 +1,0 @@
+-import random
+-
+-import numpy as np
+-import torch
+-import torch.nn as nn
+-from torch.distributions import Normal
+-
+-
+-class SACNetwork(nn.Module):
+-    def __init__(self, state_dim, action_dim, hidden_dim=64):
+-        super().__init__()
+-        self.state_dim = state_dim
+-        self.action_dim = action_dim
+-
+-        # Actor network
+-        self.actor = nn.Sequential(
+-            nn.Linear(state_dim, hidden_dim),
+-            nn.ReLU(),
+-            nn.Linear(hidden_dim, hidden_dim),
+-            nn.ReLU()
+-        )
+-        self.mean = nn.Linear(hidden_dim, action_dim)
+-        self.log_std = nn.Linear(hidden_dim, action_dim)
+-
+-        # Critic networks (twin Q-networks)
+-        self.critic1 = nn.Sequential(
+-            nn.Linear(state_dim + action_dim, hidden_dim),
+-            nn.ReLU(),
+-            nn.Linear(hidden_dim, hidden_dim),
+-            nn.ReLU(),
+-            nn.Linear(hidden_dim, 1)
+-        )
+-
+-        self.critic2 = nn.Sequential(
+-            nn.Linear(state_dim + action_dim, hidden_dim),
+-            nn.ReLU(),
+-            nn.Linear(hidden_dim, hidden_dim),
+-            nn.ReLU(),
+-            nn.Linear(hidden_dim, 1)
+-        )
+-
+-    def forward(self, state):
+-        x = self.actor(state)
+-        mean = self.mean(x)
+-        log_std = self.log_std(x)
+-        log_std = torch.clamp(log_std, -20, 2)
+-        return mean, log_std
+-
+-    def sample(self, state):
+-        mean, log_std = self(state)
+-        std = log_std.exp()
+-        normal = Normal(mean, std)
+-        x = normal.rsample()
+-        action = torch.tanh(x)
+-        log_prob = normal.log_prob(x)
+-        log_prob -= torch.log(1 - action.pow(2) + 1e-6)
+-        return action, log_prob.sum(1, keepdim=True)
+-
+-    def get_q_values(self, state, action):
+-        sa = torch.cat([state, action], 1)
+-        q1 = self.critic1(sa)
+-        q2 = self.critic2(sa)
+-        return q1, q2
+-
+-
+-class SACMemory:
+-    def __init__(self, capacity):
+-        self.capacity = capacity
+-        self.buffer = []
+-        self.position = 0
+-
+-    def push(self, state, action, reward, next_state, done):
+-        if len(self.buffer) < self.capacity:
+-            self.buffer.append(None)
+-        self.buffer[self.position] = (state, action, reward, next_state, done)
+-        self.position = (self.position + 1) % self.capacity
+-
+-    def sample(self, batch_size):
+-        batch = random.sample(self.buffer, batch_size)
+-        state, action, reward, next_state, done = map(np.stack, zip(*batch))
+-        return (
+-            torch.FloatTensor(state),
+-            torch.FloatTensor(action),
+-            torch.FloatTensor(reward).unsqueeze(1),
+-            torch.FloatTensor(next_state),
+-            torch.FloatTensor(done).unsqueeze(1)
+-        )
+-
+-    def __len__(self):
+-        return len(self.buffer)
+Index: controllers/zone_managers/only_cloud.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>from typing import Unpack\r\n\r\nfrom controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate\r\nfrom models.node.fog import FogLayerABC\r\nfrom models.task import Task\r\n\r\n\r\nclass OnlyCloudZoneManager(ZoneManagerABC):\r\n    def assign_task(self, task: Task) -> FogLayerABC:\r\n        return None\r\n\r\n    def can_offload_task(self, task: Task) -> bool:\r\n        return False\r\n\r\n    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):\r\n        pass\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/only_cloud.py b/controllers/zone_managers/only_cloud.py
+--- a/controllers/zone_managers/only_cloud.py	(revision e9e7aa2813a3aefe5c0f30d2a5a2fa7f55da4328)
++++ b/controllers/zone_managers/only_cloud.py	(date 1751898204938)
+@@ -1,16 +1,0 @@
+-from typing import Unpack
+-
+-from controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate
+-from models.node.fog import FogLayerABC
+-from models.task import Task
+-
+-
+-class OnlyCloudZoneManager(ZoneManagerABC):
+-    def assign_task(self, task: Task) -> FogLayerABC:
+-        return None
+-
+-    def can_offload_task(self, task: Task) -> bool:
+-        return False
+-
+-    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):
+-        pass
+Index: controllers/zone_managers/only_fog.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import random\r\n\r\nfrom typing import Dict, List, Unpack\r\n\r\nfrom config import Config\r\nfrom controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate\r\nfrom models.node.fog import FogLayerABC\r\nfrom models.task import Task\r\n\r\n\r\nclass OnlyFogZoneManager(ZoneManagerABC):\r\n    def can_offload_task(self, task: Task) -> bool:\r\n        merged_fog_nodes: Dict[str, FogLayerABC] = {**self.fixed_fog_nodes, **self.mobile_fog_nodes}\r\n\r\n        possible_fog_nodes: List[FogLayerABC] = []\r\n        for fog_id, fog in merged_fog_nodes.items():\r\n            if fog.can_offload_task(task):\r\n                possible_fog_nodes.append(fog)\r\n\r\n        if len(possible_fog_nodes) == 0:\r\n            return False\r\n        self.__possible_fog_nodes = possible_fog_nodes\r\n        return True\r\n\r\n    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):\r\n        pass\r\n\r\n    def assign_task(self, task: Task) -> FogLayerABC:\r\n        return random.choice(self.__possible_fog_nodes)\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/only_fog.py b/controllers/zone_managers/only_fog.py
+--- a/controllers/zone_managers/only_fog.py	(revision e9e7aa2813a3aefe5c0f30d2a5a2fa7f55da4328)
++++ b/controllers/zone_managers/only_fog.py	(date 1751898204938)
+@@ -1,29 +1,0 @@
+-import random
+-
+-from typing import Dict, List, Unpack
+-
+-from config import Config
+-from controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate
+-from models.node.fog import FogLayerABC
+-from models.task import Task
+-
+-
+-class OnlyFogZoneManager(ZoneManagerABC):
+-    def can_offload_task(self, task: Task) -> bool:
+-        merged_fog_nodes: Dict[str, FogLayerABC] = {**self.fixed_fog_nodes, **self.mobile_fog_nodes}
+-
+-        possible_fog_nodes: List[FogLayerABC] = []
+-        for fog_id, fog in merged_fog_nodes.items():
+-            if fog.can_offload_task(task):
+-                possible_fog_nodes.append(fog)
+-
+-        if len(possible_fog_nodes) == 0:
+-            return False
+-        self.__possible_fog_nodes = possible_fog_nodes
+-        return True
+-
+-    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):
+-        pass
+-
+-    def assign_task(self, task: Task) -> FogLayerABC:
+-        return random.choice(self.__possible_fog_nodes)
+Index: controllers/zone_managers/hrl/dqn.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import random\r\nfrom collections import deque\r\n\r\nimport torch\r\nimport torch.nn as nn\r\nimport torch.nn.functional as F\r\n\r\n\r\nclass DQNNetwork(nn.Module):\r\n    def __init__(self, state_dim: int, hidden_dim: int = 32):\r\n        super(DQNNetwork, self).__init__()\r\n        self.fc1 = nn.Linear(state_dim, hidden_dim)\r\n        self.fc2 = nn.Linear(hidden_dim, hidden_dim)\r\n        self.fc3 = nn.Linear(hidden_dim, 2)  # 2 actions: local or offload\r\n\r\n    def forward(self, x):\r\n        x = F.relu(self.fc1(x))\r\n        x = F.relu(self.fc2(x))\r\n        return self.fc3(x)\r\n\r\n\r\nclass ReplayBuffer:\r\n    def __init__(self, capacity: int):\r\n        self.buffer = deque(maxlen=capacity)\r\n\r\n    def push(self, state, action, reward, next_state, done):\r\n        self.buffer.append((state, action, reward, next_state, done))\r\n\r\n    def sample(self, batch_size: int) -> tuple:\r\n        states, actions, rewards, next_states, dones = zip(*random.sample(self.buffer, batch_size))\r\n        return (torch.stack(states), torch.tensor(actions),\r\n                torch.tensor(rewards), torch.stack(next_states),\r\n                torch.tensor(dones))\r\n\r\n    def __len__(self):\r\n        return len(self.buffer)\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/hrl/dqn.py b/controllers/zone_managers/hrl/dqn.py
+--- a/controllers/zone_managers/hrl/dqn.py	(revision e9e7aa2813a3aefe5c0f30d2a5a2fa7f55da4328)
++++ b/controllers/zone_managers/hrl/dqn.py	(date 1751898204954)
+@@ -1,36 +1,0 @@
+-import random
+-from collections import deque
+-
+-import torch
+-import torch.nn as nn
+-import torch.nn.functional as F
+-
+-
+-class DQNNetwork(nn.Module):
+-    def __init__(self, state_dim: int, hidden_dim: int = 32):
+-        super(DQNNetwork, self).__init__()
+-        self.fc1 = nn.Linear(state_dim, hidden_dim)
+-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+-        self.fc3 = nn.Linear(hidden_dim, 2)  # 2 actions: local or offload
+-
+-    def forward(self, x):
+-        x = F.relu(self.fc1(x))
+-        x = F.relu(self.fc2(x))
+-        return self.fc3(x)
+-
+-
+-class ReplayBuffer:
+-    def __init__(self, capacity: int):
+-        self.buffer = deque(maxlen=capacity)
+-
+-    def push(self, state, action, reward, next_state, done):
+-        self.buffer.append((state, action, reward, next_state, done))
+-
+-    def sample(self, batch_size: int) -> tuple:
+-        states, actions, rewards, next_states, dones = zip(*random.sample(self.buffer, batch_size))
+-        return (torch.stack(states), torch.tensor(actions),
+-                torch.tensor(rewards), torch.stack(next_states),
+-                torch.tensor(dones))
+-
+-    def __len__(self):
+-        return len(self.buffer)
+Index: controllers/zone_managers/random.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import random\r\n\r\nfrom typing import Dict, List, Unpack\r\n\r\nfrom config import Config\r\nfrom controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate\r\nfrom models.node.fog import FogLayerABC\r\nfrom models.task import Task\r\n\r\n\r\nclass RandomZoneManager(ZoneManagerABC):\r\n    def can_offload_task(self, task: Task) -> bool:\r\n        merged_fog_nodes: Dict[str, FogLayerABC] = {**self.fixed_fog_nodes, **self.mobile_fog_nodes}\r\n\r\n        possible_fog_nodes: List[FogLayerABC] = []\r\n        if task.creator.can_offload_task(task):\r\n            possible_fog_nodes.append(task.creator)\r\n        for fog_id, fog in merged_fog_nodes.items():\r\n            if fog.can_offload_task(task):\r\n                possible_fog_nodes.append(fog)\r\n\r\n        if len(possible_fog_nodes) == 0:\r\n            return False\r\n        self.__possible_fog_nodes = possible_fog_nodes\r\n        return random.random() < Config.RandomZoneManagerConfig.OFFLOAD_CHANCE\r\n\r\n    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):\r\n        pass\r\n\r\n    def assign_task(self, task: Task) -> FogLayerABC:\r\n        return random.choice(self.__possible_fog_nodes)\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/random.py b/controllers/zone_managers/random.py
+--- a/controllers/zone_managers/random.py	(revision e9e7aa2813a3aefe5c0f30d2a5a2fa7f55da4328)
++++ b/controllers/zone_managers/random.py	(date 1751898204938)
+@@ -1,31 +1,0 @@
+-import random
+-
+-from typing import Dict, List, Unpack
+-
+-from config import Config
+-from controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate
+-from models.node.fog import FogLayerABC
+-from models.task import Task
+-
+-
+-class RandomZoneManager(ZoneManagerABC):
+-    def can_offload_task(self, task: Task) -> bool:
+-        merged_fog_nodes: Dict[str, FogLayerABC] = {**self.fixed_fog_nodes, **self.mobile_fog_nodes}
+-
+-        possible_fog_nodes: List[FogLayerABC] = []
+-        if task.creator.can_offload_task(task):
+-            possible_fog_nodes.append(task.creator)
+-        for fog_id, fog in merged_fog_nodes.items():
+-            if fog.can_offload_task(task):
+-                possible_fog_nodes.append(fog)
+-
+-        if len(possible_fog_nodes) == 0:
+-            return False
+-        self.__possible_fog_nodes = possible_fog_nodes
+-        return random.random() < Config.RandomZoneManagerConfig.OFFLOAD_CHANCE
+-
+-    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):
+-        pass
+-
+-    def assign_task(self, task: Task) -> FogLayerABC:
+-        return random.choice(self.__possible_fog_nodes)
+Index: controllers/zone_managers/deep_rl_zone_manager.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import numpy as np\r\nfrom typing import Unpack\r\n\r\nfrom controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate\r\nfrom controllers.zone_managers.deep_rl_agent import DeepRLAgent\r\nfrom controllers.zone_managers.deep_rl_env import DeepRLEnvironment\r\nfrom models.node.fog import FogLayerABC\r\nfrom models.task import Task\r\nfrom config import Config\r\n\r\n\r\nclass DeepRLZoneManager(ZoneManagerABC):\r\n    \"\"\"\r\n    A zone manager that uses Deep Reinforcement Learning for task offloading.\r\n    \"\"\"\r\n\r\n    def __init__(self, zone):\r\n        super().__init__(zone)\r\n        \r\n        # Initialize Deep RL Environment and Agent\r\n        self.env = DeepRLEnvironment(simulator=None)  # Will be set in simulation\r\n        self.agent = DeepRLAgent(state_dim=5, action_dim=3)  # 5 state features, 3 actions\r\n        \r\n        # Load pre-trained model if available\r\n        try:\r\n            self.agent.load_model()\r\n            print(\"[DeepRL] Loaded pre-trained model.\")\r\n        except:\r\n            print(\"[DeepRL] No pre-trained model found, starting fresh.\")\r\n\r\n    def can_offload_task(self, task: Task) -> bool:\r\n        \"\"\"\r\n        Checks if there is an available node to offload the task.\r\n        \"\"\"\r\n        available_nodes = list(self.fixed_fog_nodes.values()) + list(self.mobile_fog_nodes.values())\r\n        return any(node.can_offload_task(task) for node in available_nodes) or self.env.simulator.cloud_node.can_offload_task(task)\r\n\r\n    def assign_task(self, task: Task) -> FogLayerABC:\r\n        \"\"\"\r\n        Uses Deep RL to decide where to offload a task.\r\n        \"\"\"\r\n        state = self.env._get_state()  # Get current system state\r\n        action = self.agent.select_action(state)  # Choose an action\r\n\r\n        if action == 0:\r\n            executor = task.creator  # Local Execution\r\n        elif action == 1:\r\n            executor = self._get_best_fog_node(task)  # Offload to Fog\r\n        else:\r\n            executor = self.env.simulator.cloud_node  # Offload to Cloud\r\n\r\n        if executor and executor.can_offload_task(task):\r\n            executor.assign_task(task, self.env.simulator.clock.get_current_time())\r\n            reward = self.env._compute_reward(task, executor)\r\n        else:\r\n            reward = -1  # Task couldn't be offloaded\r\n\r\n        next_state = self.env._get_state()\r\n        self.agent.store_experience(state, action, reward, next_state, done=False)  # Store for training\r\n\r\n        return executor\r\n\r\n    def _get_best_fog_node(self, task):\r\n        \"\"\"\r\n        Finds the best fog node to offload the task based on available resources.\r\n        \"\"\"\r\n        fog_nodes = list(self.fixed_fog_nodes.values()) + list(self.mobile_fog_nodes.values())\r\n        fog_nodes = [node for node in fog_nodes if node.can_offload_task(task)]\r\n        return min(fog_nodes, key=lambda n: n.remaining_power, default=None)\r\n\r\n    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):\r\n        \"\"\"\r\n        Updates the RL agent after each simulation step.\r\n        \"\"\"\r\n        self.agent.train()  # Train the agent periodically\r\n        if np.random.random() < 0.05:  # Update target network occasionally\r\n            self.agent.update_target_network()\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/deep_rl_zone_manager.py b/controllers/zone_managers/deep_rl_zone_manager.py
+--- a/controllers/zone_managers/deep_rl_zone_manager.py	(revision e9e7aa2813a3aefe5c0f30d2a5a2fa7f55da4328)
++++ b/controllers/zone_managers/deep_rl_zone_manager.py	(date 1751898204970)
+@@ -1,77 +1,0 @@
+-import numpy as np
+-from typing import Unpack
+-
+-from controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate
+-from controllers.zone_managers.deep_rl_agent import DeepRLAgent
+-from controllers.zone_managers.deep_rl_env import DeepRLEnvironment
+-from models.node.fog import FogLayerABC
+-from models.task import Task
+-from config import Config
+-
+-
+-class DeepRLZoneManager(ZoneManagerABC):
+-    """
+-    A zone manager that uses Deep Reinforcement Learning for task offloading.
+-    """
+-
+-    def __init__(self, zone):
+-        super().__init__(zone)
+-        
+-        # Initialize Deep RL Environment and Agent
+-        self.env = DeepRLEnvironment(simulator=None)  # Will be set in simulation
+-        self.agent = DeepRLAgent(state_dim=5, action_dim=3)  # 5 state features, 3 actions
+-        
+-        # Load pre-trained model if available
+-        try:
+-            self.agent.load_model()
+-            print("[DeepRL] Loaded pre-trained model.")
+-        except:
+-            print("[DeepRL] No pre-trained model found, starting fresh.")
+-
+-    def can_offload_task(self, task: Task) -> bool:
+-        """
+-        Checks if there is an available node to offload the task.
+-        """
+-        available_nodes = list(self.fixed_fog_nodes.values()) + list(self.mobile_fog_nodes.values())
+-        return any(node.can_offload_task(task) for node in available_nodes) or self.env.simulator.cloud_node.can_offload_task(task)
+-
+-    def assign_task(self, task: Task) -> FogLayerABC:
+-        """
+-        Uses Deep RL to decide where to offload a task.
+-        """
+-        state = self.env._get_state()  # Get current system state
+-        action = self.agent.select_action(state)  # Choose an action
+-
+-        if action == 0:
+-            executor = task.creator  # Local Execution
+-        elif action == 1:
+-            executor = self._get_best_fog_node(task)  # Offload to Fog
+-        else:
+-            executor = self.env.simulator.cloud_node  # Offload to Cloud
+-
+-        if executor and executor.can_offload_task(task):
+-            executor.assign_task(task, self.env.simulator.clock.get_current_time())
+-            reward = self.env._compute_reward(task, executor)
+-        else:
+-            reward = -1  # Task couldn't be offloaded
+-
+-        next_state = self.env._get_state()
+-        self.agent.store_experience(state, action, reward, next_state, done=False)  # Store for training
+-
+-        return executor
+-
+-    def _get_best_fog_node(self, task):
+-        """
+-        Finds the best fog node to offload the task based on available resources.
+-        """
+-        fog_nodes = list(self.fixed_fog_nodes.values()) + list(self.mobile_fog_nodes.values())
+-        fog_nodes = [node for node in fog_nodes if node.can_offload_task(task)]
+-        return min(fog_nodes, key=lambda n: n.remaining_power, default=None)
+-
+-    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):
+-        """
+-        Updates the RL agent after each simulation step.
+-        """
+-        self.agent.train()  # Train the agent periodically
+-        if np.random.random() < 0.05:  # Update target network occasionally
+-            self.agent.update_target_network()
+Index: controllers/zone_managers/heuristic.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>from typing import Unpack\r\n\r\nimport numpy as np\r\n\r\nfrom controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate\r\nfrom models.node.fog import FixedFogNode, FogLayerABC\r\nfrom models.node.base import MobileNodeABC\r\nfrom models.task import Task\r\n\r\n\r\nclass HeuristicZoneManager(ZoneManagerABC):\r\n    def assign_task(self, task: Task) -> FogLayerABC:\r\n        if task.creator.can_offload_task(task):\r\n            return task.creator\r\n\r\n        creator = task.creator\r\n        nearest_distance = float('inf')\r\n        nearest_fog_node = None\r\n        for node in self.all_possible_nodes.values():\r\n            next_dis = self.get_next_distance(task, creator, node)\r\n            if nearest_fog_node is None or next_dis < nearest_distance:\r\n                nearest_fog_node = node\r\n                nearest_distance = next_dis\r\n        return nearest_fog_node\r\n\r\n    @staticmethod\r\n    def get_next_distance(task: Task, creator: MobileNodeABC, executor: MobileNodeABC) -> float:\r\n        time = task.exec_time\r\n        creator_next_position_x = (creator.x + creator.speed * time * np.cos(np.deg2rad(creator.angle)))\r\n        creator_next_position_y = (creator.y + creator.speed * time * np.sin(np.deg2rad(creator.angle)))\r\n\r\n        if isinstance(executor, FixedFogNode):\r\n            executor_next_position_x = executor.x\r\n            executor_next_position_y = executor.y\r\n        else:\r\n            executor_next_position_x = (executor.x + executor.speed * time * np.cos(np.deg2rad(executor.angle)))\r\n            executor_next_position_y = (executor.y + executor.speed * time * np.sin(np.deg2rad(executor.angle)))\r\n\r\n        return np.sqrt(\r\n            (creator_next_position_y - executor_next_position_y) ** 2 +\r\n            (creator_next_position_x - executor_next_position_x) ** 2\r\n        )\r\n\r\n    def can_offload_task(self, task: Task) -> bool:\r\n        if task.creator.can_offload_task(task):\r\n            return True\r\n\r\n        all_fog_nodes: [str, FogLayerABC] = {**self.fixed_fog_nodes, **self.mobile_fog_nodes}\r\n        self.all_possible_nodes: dict[str, FogLayerABC] = {}\r\n        for node in all_fog_nodes.values():\r\n            if node.can_offload_task(task):\r\n                self.all_possible_nodes[node.id] = node\r\n        return len(self.all_possible_nodes) > 0\r\n\r\n    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):\r\n        pass\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/heuristic.py b/controllers/zone_managers/heuristic.py
+--- a/controllers/zone_managers/heuristic.py	(revision e9e7aa2813a3aefe5c0f30d2a5a2fa7f55da4328)
++++ b/controllers/zone_managers/heuristic.py	(date 1751898204938)
+@@ -1,56 +1,0 @@
+-from typing import Unpack
+-
+-import numpy as np
+-
+-from controllers.zone_managers.base import ZoneManagerABC, ZoneManagerUpdate
+-from models.node.fog import FixedFogNode, FogLayerABC
+-from models.node.base import MobileNodeABC
+-from models.task import Task
+-
+-
+-class HeuristicZoneManager(ZoneManagerABC):
+-    def assign_task(self, task: Task) -> FogLayerABC:
+-        if task.creator.can_offload_task(task):
+-            return task.creator
+-
+-        creator = task.creator
+-        nearest_distance = float('inf')
+-        nearest_fog_node = None
+-        for node in self.all_possible_nodes.values():
+-            next_dis = self.get_next_distance(task, creator, node)
+-            if nearest_fog_node is None or next_dis < nearest_distance:
+-                nearest_fog_node = node
+-                nearest_distance = next_dis
+-        return nearest_fog_node
+-
+-    @staticmethod
+-    def get_next_distance(task: Task, creator: MobileNodeABC, executor: MobileNodeABC) -> float:
+-        time = task.exec_time
+-        creator_next_position_x = (creator.x + creator.speed * time * np.cos(np.deg2rad(creator.angle)))
+-        creator_next_position_y = (creator.y + creator.speed * time * np.sin(np.deg2rad(creator.angle)))
+-
+-        if isinstance(executor, FixedFogNode):
+-            executor_next_position_x = executor.x
+-            executor_next_position_y = executor.y
+-        else:
+-            executor_next_position_x = (executor.x + executor.speed * time * np.cos(np.deg2rad(executor.angle)))
+-            executor_next_position_y = (executor.y + executor.speed * time * np.sin(np.deg2rad(executor.angle)))
+-
+-        return np.sqrt(
+-            (creator_next_position_y - executor_next_position_y) ** 2 +
+-            (creator_next_position_x - executor_next_position_x) ** 2
+-        )
+-
+-    def can_offload_task(self, task: Task) -> bool:
+-        if task.creator.can_offload_task(task):
+-            return True
+-
+-        all_fog_nodes: [str, FogLayerABC] = {**self.fixed_fog_nodes, **self.mobile_fog_nodes}
+-        self.all_possible_nodes: dict[str, FogLayerABC] = {}
+-        for node in all_fog_nodes.values():
+-            if node.can_offload_task(task):
+-                self.all_possible_nodes[node.id] = node
+-        return len(self.all_possible_nodes) > 0
+-
+-    def update(self, **kwargs: Unpack[ZoneManagerUpdate]):
+-        pass

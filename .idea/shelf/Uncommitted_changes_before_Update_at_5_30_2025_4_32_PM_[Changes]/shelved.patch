@@ -1,0 +1,335 @@
+Index: controllers/simulator.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import random\r\nfrom collections import defaultdict\r\nfrom typing import Dict, List\r\n\r\nfrom NoiseConfigs.utilsFunctions import UtilsFunc\r\nfrom config import Config\r\nfrom controllers.finalChoiceByAttenuationNoise import FinalChoiceByAttenuationNoise\r\nfrom controllers.loader import Loader\r\nfrom controllers.metric import MetricsController\r\nfrom controllers.zone_managers.base import ZoneManagerABC\r\nfrom controllers.zone_managers.deepRL.deep_rl_zone_manager import DeepRLZoneManager\r\nfrom models.node.base import MobileNodeABC, NodeABC\r\nfrom models.node.cloud import CloudNode\r\nfrom models.node.fog import FixedFogNode\r\nfrom models.node.fog import MobileFogNode\r\nfrom models.node.user import UserNode\r\nfrom models.task import Task\r\nfrom utils.clock import Clock\r\nfrom utils.enums import Layer\r\nimport sys\r\nimport os\r\n\r\nsys.path.append(os.path.abspath(\"E:/VANET - Copy/NoiseConfigs\"))\r\n\r\n\r\ndef yellow_bg(text):\r\n    return f\"\\033[43m{text}\\033[0m\"\r\n\r\ndef red_bg(text):\r\n    return f\"\\033[41m{text}\\033[0m\"\r\n\r\ndef blue_bg(text):\r\n    return f\"\\033[44m{text}\\033[0m\"\r\n\r\n\r\n# note: check again\r\ndef logAttenuation(attenuationList):\r\n    sampleList = []\r\n    for i in range(0, len(attenuationList)):\r\n        sampleList.append(attenuationList[i])\r\n    print(yellow_bg(\"attenuationList\") + f\":{len(sampleList)}\")\r\n\r\n\r\nclass Simulator:\r\n    def __init__(self, loader: Loader, clock: Clock, cloud: CloudNode):\r\n        self.metrics: MetricsController = MetricsController()\r\n        self.loader: Loader = loader\r\n        self.cloud_node: CloudNode = cloud\r\n        self.zone_managers: Dict[str, ZoneManagerABC] = {}\r\n        self.fixed_fog_nodes: Dict[str, FixedFogNode] = {}\r\n        self.mobile_fog_nodes: Dict[str, MobileFogNode] = {}\r\n        self.user_nodes: Dict[str, UserNode] = {}\r\n        self.clock: Clock = clock\r\n        self.task_zone_managers: Dict[str, ZoneManagerABC] = {}\r\n        self.retransmission_tasks: Dict[float, List[Task]] = {}\r\n\r\n    def init_simulation(self):\r\n        self.clock.set_current_time(0)\r\n        self.zone_managers = self.loader.load_zones()\r\n        self.fixed_fog_nodes = self.loader.load_fixed_zones()\r\n        self.assign_fixed_nodes()\r\n        self.update_mobile_fog_nodes_coordinate()\r\n        self.update_user_nodes_coordinate()\r\n        # For zone managers that use deep RL, the simulator reference is set.\r\n        for zm in self.zone_managers.values():\r\n            if hasattr(zm, \"set_simulator\"):\r\n                zm.set_simulator(self)\r\n\r\n    def schedule_retransmission(self, task: Task, scheduled_time: float):\r\n        if scheduled_time not in self.retransmission_tasks:\r\n            self.retransmission_tasks[scheduled_time] = []\r\n        self.retransmission_tasks[scheduled_time].append(task)\r\n\r\n    def assign_fixed_nodes(self):\r\n        for z_id, zone_manager in self.zone_managers.items():\r\n            fixed_nodes: List[FixedFogNode] = []\r\n            for n_id, fixed_node in self.fixed_fog_nodes.items():\r\n                if zone_manager.zone.is_in_coverage(fixed_node.x, fixed_node.y):\r\n                    fixed_nodes.append(fixed_node)\r\n            zone_manager.add_fixed_fog_nodes(fixed_nodes)\r\n\r\n    # check traffic status\r\n    def logTrafficStatus(self, partitions):\r\n        for partition in partitions:\r\n            print(\r\n                f\"Partition at ({partition.centerX}, {partition.centerY}): Traffic Status = {partition.trafficStatus}\")\r\n\r\n    def retransmission(self, zone_managers, current_time, partitions):\r\n        tasks_to_retransmit = []\r\n        for scheduled_time in list(self.retransmission_tasks.keys()):\r\n            if scheduled_time <= current_time:\r\n                tasks_to_retransmit.extend(self.retransmission_tasks.pop(scheduled_time))\r\n\r\n        if tasks_to_retransmit:\r\n            for task in tasks_to_retransmit:\r\n                possible_zone_managers = self.find_zone_manager_offload_task(zone_managers, task, current_time)\r\n                if self.choose_executor_and_assign(possible_zone_managers, task, partitions, current_time):\r\n                    continue\r\n\r\n\r\n    def find_zone_manager_offload_task(self, zone_managers, task, current_time):\r\n        zone_manager_offload_task = []\r\n        for zone_manager in zone_managers:\r\n            # print(f\"zone_manager:{zone_manager.zone}\")\r\n            if zone_manager.can_offload_task(task):\r\n                # has_offloaded = True\r\n\r\n                # assign task\r\n                if hasattr(zone_manager, \"propose_candidate\"):\r\n                    proposed_zone_manager, proposed_executor = zone_manager.propose_candidate(task,\r\n                                                                                              current_time)\r\n                    # print(f\"proposed_executor:{proposed_executor}\")\r\n                else:\r\n                    proposed_zone_manager = zone_manager\r\n                    proposed_executor = zone_manager.offload_task(task, current_time)\r\n\r\n                if proposed_executor not in zone_manager_offload_task:\r\n                    if proposed_executor:\r\n                        zone_manager_offload_task.append((proposed_zone_manager, proposed_executor))\r\n        return zone_manager_offload_task\r\n\r\n    def choose_executor_and_assign(self, zone_manager_offload_task, task, partitions, current_time):\r\n        # if any ZM suggest any device to offload\r\n        if len(zone_manager_offload_task) != 0:\r\n            attenuationList = []\r\n\r\n            for candidate in zone_manager_offload_task:\r\n                zone_manager, candidate_executor = candidate\r\n                # print(f\"candidate_executor: {candidate_executor}\")\r\n                intersecting_partitions = UtilsFunc().find_line_intersections(\r\n                    (task.creator.x, task.creator.y),\r\n                    (candidate_executor.x, candidate_executor.y),\r\n                    partitions\r\n                )\r\n\r\n                if len(intersecting_partitions) > 0:\r\n                    attenuation = UtilsFunc().path_loss_km_ghz(\r\n                        d_km=UtilsFunc().distance(task.creator.x, task.creator.y,\r\n                                                  candidate_executor.x, candidate_executor.y) / 1000,\r\n                        f_ghz=UtilsFunc().FREQUENCY_GH,\r\n                        n=UtilsFunc().get_max_urban_status(intersecting_partitions)\r\n                    ) + UtilsFunc().get_max_rain_attenuation(intersecting_partitions)\r\n                else:\r\n                    attenuation = 0\r\n                    # locally offloading\r\n                attenuationList.append((zone_manager, candidate_executor, attenuation))\r\n            # logAttenuation(attenuationList)\r\n\r\n            # todo: make decision to offload a task\r\n            finalChoiceToOffload, plr = FinalChoiceByAttenuationNoise().makeFinalChoice(attenuationList,\r\n                                                                                        task,\r\n                                                                                        partitions,\r\n                                                                                        Config.NoiseMethod.DEFAULT_METHOD)\r\n\r\n            packetLossRandomNumber = random.randint(0, 100)\r\n\r\n            # if finalChoiceToOffload:\r\n            #     print(yellow_bg(f\"finalChoiceToOffload:{finalChoiceToOffload}\"))\r\n\r\n            if finalChoiceToOffload:\r\n                if packetLossRandomNumber < plr:\r\n                    self.metrics.inc_packet_loss()\r\n                    # print(blue_bg(\"----------------------------------------------------------------------------\"))\r\n                    # todo : add retransmission\r\n                    chosen_zone_manager, chosen_executor, _ = finalChoiceToOffload\r\n                    if task in chosen_executor.tasks:\r\n                        chosen_executor.tasks.remove(task)\r\n\r\n                    timeout_time = current_time + Config.SimulatorConfig.TIMEOUT_TIME\r\n                    self.schedule_retransmission(task, timeout_time)\r\n\r\n                else:\r\n                    chosen_zone_manager, chosen_executor, _ = finalChoiceToOffload\r\n                    self.task_zone_managers[task.id] = chosen_zone_manager\r\n                    self.metrics.inc_node_tasks(chosen_executor.id)\r\n                    if isinstance(chosen_zone_manager, DeepRLZoneManager):\r\n                        state = chosen_zone_manager.env._get_state(task)  # Get current system state\r\n                        # print(blue_bg(f\"------------chosen_executor: {chosen_executor}------------\\n------------task: {task}------------\"))\r\n                        reward, action = chosen_zone_manager.env._compute_reward2(task, chosen_executor)\r\n                        if not chosen_executor.can_offload_task(task) and (reward > -100):\r\n                            reward = -100\r\n                            timeout_time = current_time + 1\r\n                            self.schedule_retransmission(task, timeout_time)\r\n                        elif reward < -100:\r\n                            timeout_time = current_time + 1\r\n                            self.schedule_retransmission(task, timeout_time)\r\n                        else:\r\n                            chosen_executor.assign_task(task, current_time)\r\n\r\n                        # if reward < 0:\r\n                        #     print(red_bg(f\"reward: --- {reward} --- {task.id}, {chosen_executor.id}\"))\r\n                    else:\r\n                        chosen_executor.assign_task(task, current_time)\r\n                    # if reward < 0:\r\n                    #     print(chosen_executor.remaining_power)\r\n                    if isinstance(chosen_zone_manager, DeepRLZoneManager):\r\n                        next_state = chosen_zone_manager.env._get_state(task)\r\n                        chosen_zone_manager.agent.store_experience(state, action, reward, next_state, done=False)  # Store for training\r\n                        chosen_zone_manager.agent.train()\r\n            else:\r\n                # note : there is not any device that meet noise problem, so they should retransmit too,\r\n                #  but without any TIMEOUT, it will retry to exec in next step !\r\n\r\n                # note todo: : it's good to make it run in the same time\r\n                self.metrics.inc_no_device_found_to_run_becauseOf_Noise()\r\n\r\n                timeout_time = current_time + 1\r\n                self.schedule_retransmission(task, timeout_time)\r\n        else:\r\n            if task.creator.can_offload_task(task):\r\n                task.creator.assign_task(task, current_time)\r\n                self.metrics.inc_local_execution()\r\n            else:\r\n                self.offload_to_cloud(task, current_time)\r\n\r\n    def start_simulation(self):\r\n        self.init_simulation()\r\n        while (current_time := self.clock.get_current_time()) < Config.SimulatorConfig.SIMULATION_DURATION:\r\n            print(red_bg(f\"current_time:{current_time}\"))\r\n\r\n            # Update traffic status\r\n            traffic_data = UtilsFunc.recognize_traffic_status(\r\n                f\"E:\\pythonProject\\VANET\\SumoDividedByTime\\Outputs2\\dataInTime{int(self.clock.get_current_time())}.csv\")\r\n            partitions = UtilsFunc.load_partitions(\"generated_hex_partitions\")\r\n            for partition in partitions:\r\n                partition.update_traffic_status(traffic_data)\r\n            # self.logTrafficStatus(partitions)\r\n\r\n            nodes_tasks = self.load_tasks(current_time)\r\n            user_possible_zones = self.assign_mobile_nodes_to_zones(self.user_nodes, layer=Layer.USER)\r\n            mobile_possible_zones = self.assign_mobile_nodes_to_zones(self.mobile_fog_nodes, layer=Layer.FOG)\r\n\r\n            merged_possible_zones: Dict[str, List[ZoneManagerABC]] = {**user_possible_zones, **mobile_possible_zones}\r\n\r\n            for creator_id, tasks in nodes_tasks.items():\r\n                zone_managers = merged_possible_zones.get(creator_id, [])\r\n                # print(f\"zoneManagers : {zone_managers}\")\r\n                self.retransmission(zone_managers, current_time, partitions)\r\n\r\n                for task in tasks:\r\n                    self.metrics.inc_total_tasks()\r\n                    # has_offloaded = False\r\n\r\n                    zone_manager_offload_task = self.find_zone_manager_offload_task(zone_managers, task, current_time)\r\n                    self.choose_executor_and_assign(zone_manager_offload_task, task, partitions, current_time)\r\n\r\n            self.update_graph()\r\n            self.execute_tasks_for_one_step()\r\n            self.metrics.flush()\r\n\r\n            self.metrics.log_metrics()\r\n        self.drop_not_completed_tasks()\r\n\r\n    def load_tasks(self, current_time: float) -> Dict[str, List[Task]]:\r\n        tasks: Dict[str, List[Task]] = defaultdict(list)\r\n        for creator_id, creator_tasks in self.loader.load_nodes_tasks(current_time).items():\r\n            creator = None\r\n            if creator_id in self.user_nodes:\r\n                creator = self.user_nodes[creator_id]\r\n            elif creator_id in self.mobile_fog_nodes:\r\n                creator = self.mobile_fog_nodes[creator_id]\r\n            assert creator is not None\r\n\r\n            for task in creator_tasks:\r\n                task.creator = creator\r\n                tasks[creator_id].append(task)\r\n        return tasks\r\n\r\n    def execute_tasks_for_one_step(self):\r\n        executed_tasks: List[Task] = []\r\n        merged_nodes: Dict[str, NodeABC] = {\r\n            **self.mobile_fog_nodes,\r\n            **self.user_nodes,\r\n            self.cloud_node.id: self.cloud_node,\r\n        }\r\n        for node_id, node in merged_nodes.items():\r\n            tasks = node.execute_tasks(self.clock.get_current_time())\r\n            # if tasks:\r\n            #     print(yellow_bg(f\"tasks :{tasks}\"))\r\n            executed_tasks.extend(tasks)\r\n            for task in tasks:\r\n                zone_manager = self.task_zone_managers.get(task.id)\r\n                if zone_manager:\r\n                    zone_manager.update(current_task=task)\r\n                    all_fog_nodes = {**zone_manager.fixed_fog_nodes, **zone_manager.mobile_fog_nodes}\r\n                    loads = [len(node.tasks) for node in all_fog_nodes.values() if node.can_offload_task(task)]\r\n                    if loads:\r\n                        min_load = min(loads)\r\n                        max_load = max(loads)\r\n                        self.metrics.inc_task_load_diff(task.id, min_load, max_load)\r\n\r\n                if task.creator.id == task.executor.id:\r\n                    self.metrics.inc_local_execution()\r\n                if task.has_migrated:\r\n                    self.metrics.inc_migration()\r\n                if task.has_migrated and task.is_deadline_missed:\r\n                    self.metrics.inc_migrate_and_miss()\r\n                if task.is_deadline_missed:\r\n                    print(blue_bg(f\"{task.id}: {task.release_time}, {task.deadline}, {task.exec_time}, {task.finish_time}, {task.executor.id}\"))\r\n                    self.metrics.inc_deadline_miss()\r\n                else:\r\n                    self.metrics.inc_completed_task()\r\n\r\n    def update_graph(self):\r\n        self.clock.tick()\r\n        self.update_user_nodes_coordinate()\r\n        self.update_mobile_fog_nodes_coordinate()\r\n\r\n    def offload_to_cloud(self, task: Task, current_time: float):\r\n        if self.cloud_node.can_offload_task(task):\r\n            self.cloud_node.assign_task(task, current_time)\r\n            self.metrics.inc_cloud_tasks()\r\n        else:\r\n            self.metrics.inc_no_resource_found()\r\n\r\n    def assign_mobile_nodes_to_zones(\r\n            self,\r\n            mobile_nodes: dict[str, MobileNodeABC],\r\n            layer: Layer\r\n    ) -> Dict[str, List[ZoneManagerABC]]:\r\n\r\n        nodes_possible_zones: Dict[str, List[ZoneManagerABC]] = defaultdict(list)\r\n        for z_id, zone_manager in self.zone_managers.items():\r\n            nodes: List[MobileNodeABC] = []\r\n            for n_id, mobile_node in mobile_nodes.items():\r\n                if zone_manager.zone.is_in_coverage(mobile_node.x, mobile_node.y):\r\n                    nodes.append(mobile_node)\r\n                    nodes_possible_zones[n_id].append(zone_manager)\r\n            if layer == Layer.FOG:\r\n                zone_manager.set_mobile_fog_nodes(nodes)\r\n        return nodes_possible_zones\r\n\r\n    def update_mobile_fog_nodes_coordinate(self) -> None:\r\n        new_nodes_data = self.loader.load_mobile_fog_nodes(self.clock.get_current_time())\r\n        self.mobile_fog_nodes = self.update_nodes_coordinate(self.mobile_fog_nodes, new_nodes_data)\r\n\r\n    def update_user_nodes_coordinate(self) -> None:\r\n        new_nodes_data = self.loader.load_user_nodes(self.clock.get_current_time())\r\n        self.user_nodes = self.update_nodes_coordinate(self.user_nodes, new_nodes_data)\r\n\r\n    @staticmethod\r\n    def update_nodes_coordinate(old_nodes: dict[str, MobileNodeABC], new_nodes: dict[str, MobileNodeABC]):\r\n        data: Dict[str, MobileNodeABC] = {}\r\n        for n_id, new_node in new_nodes.items():\r\n            if n_id not in old_nodes:\r\n                node = new_node\r\n            else:\r\n                node = old_nodes[n_id]\r\n                node.x = new_node.x\r\n                node.y = new_node.y\r\n                node.angle = new_node.angle\r\n                node.speed = new_node.speed\r\n            data[n_id] = node\r\n        return data\r\n\r\n    def drop_not_completed_tasks(self) -> List[Task]:\r\n        left_tasks: list[Task] = []\r\n        merged_nodes: Dict[str, NodeABC] = {\r\n            **self.mobile_fog_nodes,\r\n            **self.user_nodes,\r\n            self.cloud_node.id: self.cloud_node,\r\n        }\r\n\r\n        for node_id, node in merged_nodes.items():\r\n            left_tasks.extend(node.tasks)\r\n            for i in range(len(node.tasks)):\r\n                self.metrics.inc_deadline_miss()\r\n        return left_tasks\r\n\r\n    def get_next_task(self):\r\n        \"\"\"Retrieve the next unprocessed task from the current simulation step.\"\"\"\r\n        current_time = self.clock.get_current_time()\r\n        tasks = self.load_tasks(current_time)  # Get tasks at this step\r\n\r\n        print(f\"[DEBUG] Current Time: {current_time}, Total Tasks at this step: {sum(len(t) for t in tasks.values())}\")\r\n\r\n        for task_list in tasks.values():\r\n            for task in task_list:\r\n                print(f\"[DEBUG] Checking Task {task.id} - Completed: {task.is_completed}, Executor: {task.executor}\")\r\n                if not task.is_completed and task.executor is None:\r\n                    print(f\"[DEBUG] Found Unprocessed Task: {task.id}\")\r\n                    return task  # Return the first unprocessed task\r\n\r\n        print(\"[DEBUG] No Unprocessed Tasks Found\")\r\n        return None  # No available tasks\r\n\r\n    def create_retransmitted_task(task: Task) -> Task:\r\n        new_id = task.id + \"_R\"\r\n        new_task = Task(\r\n            id=new_id,\r\n            deadline=task.deadline,\r\n            exec_time=task.exec_time,\r\n            power=task.power,\r\n            creator=task.creator\r\n        )\r\n        return new_task\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/simulator.py b/controllers/simulator.py
+--- a/controllers/simulator.py	
++++ b/controllers/simulator.py	
+@@ -2,9 +2,8 @@
+ from collections import defaultdict
+ from typing import Dict, List
+ 
+-from NoiseConfigs.utilsFunctions import UtilsFunc
+ from config import Config
+-from controllers.finalChoiceByAttenuationNoise import FinalChoiceByAttenuationNoise
++from controllers.finalChoice import FinalChoice
+ from controllers.loader import Loader
+ from controllers.metric import MetricsController
+ from controllers.zone_managers.base import ZoneManagerABC
+@@ -17,30 +16,20 @@
+ from models.task import Task
+ from utils.clock import Clock
+ from utils.enums import Layer
+-import sys
+-import os
+-
+-sys.path.append(os.path.abspath("E:/VANET - Copy/NoiseConfigs"))
+ 
+ 
+ def yellow_bg(text):
+     return f"\033[43m{text}\033[0m"
+ 
++
+ def red_bg(text):
+     return f"\033[41m{text}\033[0m"
+ 
++
+ def blue_bg(text):
+     return f"\033[44m{text}\033[0m"
+ 
+ 
+-# note: check again
+-def logAttenuation(attenuationList):
+-    sampleList = []
+-    for i in range(0, len(attenuationList)):
+-        sampleList.append(attenuationList[i])
+-    print(yellow_bg("attenuationList") + f":{len(sampleList)}")
+-
+-
+ class Simulator:
+     def __init__(self, loader: Loader, clock: Clock, cloud: CloudNode):
+         self.metrics: MetricsController = MetricsController()
+@@ -79,13 +68,7 @@
+                     fixed_nodes.append(fixed_node)
+             zone_manager.add_fixed_fog_nodes(fixed_nodes)
+ 
+-    # check traffic status
+-    def logTrafficStatus(self, partitions):
+-        for partition in partitions:
+-            print(
+-                f"Partition at ({partition.centerX}, {partition.centerY}): Traffic Status = {partition.trafficStatus}")
+-
+-    def retransmission(self, zone_managers, current_time, partitions):
++    def retransmission(self, zone_managers, current_time):
+         tasks_to_retransmit = []
+         for scheduled_time in list(self.retransmission_tasks.keys()):
+             if scheduled_time <= current_time:
+@@ -94,22 +77,18 @@
+         if tasks_to_retransmit:
+             for task in tasks_to_retransmit:
+                 possible_zone_managers = self.find_zone_manager_offload_task(zone_managers, task, current_time)
+-                if self.choose_executor_and_assign(possible_zone_managers, task, partitions, current_time):
++                if self.choose_executor_and_assign(possible_zone_managers, task, current_time):
+                     continue
+ 
+-
+     def find_zone_manager_offload_task(self, zone_managers, task, current_time):
+         zone_manager_offload_task = []
+         for zone_manager in zone_managers:
+             # print(f"zone_manager:{zone_manager.zone}")
+             if zone_manager.can_offload_task(task):
+-                # has_offloaded = True
+ 
+                 # assign task
+                 if hasattr(zone_manager, "propose_candidate"):
+-                    proposed_zone_manager, proposed_executor = zone_manager.propose_candidate(task,
+-                                                                                              current_time)
+-                    # print(f"proposed_executor:{proposed_executor}")
++                    proposed_zone_manager, proposed_executor = zone_manager.propose_candidate(task, current_time)
+                 else:
+                     proposed_zone_manager = zone_manager
+                     proposed_executor = zone_manager.offload_task(task, current_time)
+@@ -119,93 +98,52 @@
+                         zone_manager_offload_task.append((proposed_zone_manager, proposed_executor))
+         return zone_manager_offload_task
+ 
+-    def choose_executor_and_assign(self, zone_manager_offload_task, task, partitions, current_time):
++    def choose_executor_and_assign(self, zone_manager_offload_task, task, current_time):
+         # if any ZM suggest any device to offload
+         if len(zone_manager_offload_task) != 0:
+-            attenuationList = []
++            finalCandidates = []
+ 
+             for candidate in zone_manager_offload_task:
+                 zone_manager, candidate_executor = candidate
+                 # print(f"candidate_executor: {candidate_executor}")
+-                intersecting_partitions = UtilsFunc().find_line_intersections(
+-                    (task.creator.x, task.creator.y),
+-                    (candidate_executor.x, candidate_executor.y),
+-                    partitions
+-                )
+ 
+-                if len(intersecting_partitions) > 0:
+-                    attenuation = UtilsFunc().path_loss_km_ghz(
+-                        d_km=UtilsFunc().distance(task.creator.x, task.creator.y,
+-                                                  candidate_executor.x, candidate_executor.y) / 1000,
+-                        f_ghz=UtilsFunc().FREQUENCY_GH,
+-                        n=UtilsFunc().get_max_urban_status(intersecting_partitions)
+-                    ) + UtilsFunc().get_max_rain_attenuation(intersecting_partitions)
+-                else:
+-                    attenuation = 0
+-                    # locally offloading
+-                attenuationList.append((zone_manager, candidate_executor, attenuation))
+-            # logAttenuation(attenuationList)
++                finalCandidates.append((zone_manager, candidate_executor))
+ 
+-            # todo: make decision to offload a task
+-            finalChoiceToOffload, plr = FinalChoiceByAttenuationNoise().makeFinalChoice(attenuationList,
+-                                                                                        task,
+-                                                                                        partitions,
+-                                                                                        Config.NoiseMethod.DEFAULT_METHOD)
+-
+-            packetLossRandomNumber = random.randint(0, 100)
++            finalChoiceToOffload = FinalChoice().makeFinalChoice(finalCandidates, Config.FinalDeciderMethod.DEFAULT_METHOD)
+ 
+             # if finalChoiceToOffload:
+             #     print(yellow_bg(f"finalChoiceToOffload:{finalChoiceToOffload}"))
+ 
+-            if finalChoiceToOffload:
+-                if packetLossRandomNumber < plr:
+-                    self.metrics.inc_packet_loss()
+-                    # print(blue_bg("----------------------------------------------------------------------------"))
+-                    # todo : add retransmission
+-                    chosen_zone_manager, chosen_executor, _ = finalChoiceToOffload
+-                    if task in chosen_executor.tasks:
+-                        chosen_executor.tasks.remove(task)
+ 
+-                    timeout_time = current_time + Config.SimulatorConfig.TIMEOUT_TIME
+-                    self.schedule_retransmission(task, timeout_time)
+-
+-                else:
+-                    chosen_zone_manager, chosen_executor, _ = finalChoiceToOffload
+-                    self.task_zone_managers[task.id] = chosen_zone_manager
+-                    self.metrics.inc_node_tasks(chosen_executor.id)
+-                    if isinstance(chosen_zone_manager, DeepRLZoneManager):
+-                        state = chosen_zone_manager.env._get_state(task)  # Get current system state
+-                        # print(blue_bg(f"------------chosen_executor: {chosen_executor}------------\n------------task: {task}------------"))
+-                        reward, action = chosen_zone_manager.env._compute_reward2(task, chosen_executor)
+-                        if not chosen_executor.can_offload_task(task) and (reward > -100):
+-                            reward = -100
+-                            timeout_time = current_time + 1
+-                            self.schedule_retransmission(task, timeout_time)
+-                        elif reward < -100:
+-                            timeout_time = current_time + 1
+-                            self.schedule_retransmission(task, timeout_time)
+-                        else:
+-                            chosen_executor.assign_task(task, current_time)
++            chosen_zone_manager, chosen_executor = finalChoiceToOffload
++            self.task_zone_managers[task.id] = chosen_zone_manager
++            self.metrics.inc_node_tasks(chosen_executor.id)
++            if isinstance(chosen_zone_manager, DeepRLZoneManager):
++                state = chosen_zone_manager.env._get_state(task)  # Get current system state
++                # print(blue_bg(f"------------chosen_executor: {chosen_executor}------------\n------------task: {task}------------"))
++                reward, action = chosen_zone_manager.env._compute_reward2(task, chosen_executor)
++                if not chosen_executor.can_offload_task(task) and (reward > -100):
++                    reward = -100
++                    timeout_time = current_time + 1
++                    self.schedule_retransmission(task, timeout_time)
++                elif reward < -100:
++                    timeout_time = current_time + 1
++                    self.schedule_retransmission(task, timeout_time)
++                else:
++                    chosen_executor.assign_task(task, current_time)
+ 
+-                        # if reward < 0:
+-                        #     print(red_bg(f"reward: --- {reward} --- {task.id}, {chosen_executor.id}"))
+-                    else:
+-                        chosen_executor.assign_task(task, current_time)
+-                    # if reward < 0:
+-                    #     print(chosen_executor.remaining_power)
+-                    if isinstance(chosen_zone_manager, DeepRLZoneManager):
+-                        next_state = chosen_zone_manager.env._get_state(task)
+-                        chosen_zone_manager.agent.store_experience(state, action, reward, next_state, done=False)  # Store for training
+-                        chosen_zone_manager.agent.train()
+-            else:
+-                # note : there is not any device that meet noise problem, so they should retransmit too,
+-                #  but without any TIMEOUT, it will retry to exec in next step !
+-
+-                # note todo: : it's good to make it run in the same time
+-                self.metrics.inc_no_device_found_to_run_becauseOf_Noise()
+-
+-                timeout_time = current_time + 1
+-                self.schedule_retransmission(task, timeout_time)
++                # if reward < 0:
++                #     print(red_bg(f"reward: --- {reward} --- {task.id}, {chosen_executor.id}"))
++            else:
++                chosen_executor.assign_task(task, current_time)
++            # if reward < 0:
++            #     print(chosen_executor.remaining_power)
++            if isinstance(chosen_zone_manager, DeepRLZoneManager):
++                next_state = chosen_zone_manager.env._get_state(task)
++                chosen_zone_manager.agent.store_experience(state, action, reward, next_state,
++                                                           done=False)  # Store for training
++                chosen_zone_manager.agent.train()
++
+         else:
+             if task.creator.can_offload_task(task):
+                 task.creator.assign_task(task, current_time)
+@@ -218,14 +156,6 @@
+         while (current_time := self.clock.get_current_time()) < Config.SimulatorConfig.SIMULATION_DURATION:
+             print(red_bg(f"current_time:{current_time}"))
+ 
+-            # Update traffic status
+-            traffic_data = UtilsFunc.recognize_traffic_status(
+-                f"E:\pythonProject\VANET\SumoDividedByTime\Outputs2\dataInTime{int(self.clock.get_current_time())}.csv")
+-            partitions = UtilsFunc.load_partitions("generated_hex_partitions")
+-            for partition in partitions:
+-                partition.update_traffic_status(traffic_data)
+-            # self.logTrafficStatus(partitions)
+-
+             nodes_tasks = self.load_tasks(current_time)
+             user_possible_zones = self.assign_mobile_nodes_to_zones(self.user_nodes, layer=Layer.USER)
+             mobile_possible_zones = self.assign_mobile_nodes_to_zones(self.mobile_fog_nodes, layer=Layer.FOG)
+@@ -235,14 +165,14 @@
+             for creator_id, tasks in nodes_tasks.items():
+                 zone_managers = merged_possible_zones.get(creator_id, [])
+                 # print(f"zoneManagers : {zone_managers}")
+-                self.retransmission(zone_managers, current_time, partitions)
++                self.retransmission(zone_managers, current_time)
+ 
+                 for task in tasks:
+                     self.metrics.inc_total_tasks()
+-                    # has_offloaded = False
+ 
+                     zone_manager_offload_task = self.find_zone_manager_offload_task(zone_managers, task, current_time)
+-                    self.choose_executor_and_assign(zone_manager_offload_task, task, partitions, current_time)
++                    # check: this function
++                    self.choose_executor_and_assign(zone_manager_offload_task, task, current_time)
+ 
+             self.update_graph()
+             self.execute_tasks_for_one_step()
+@@ -296,7 +226,8 @@
+                 if task.has_migrated and task.is_deadline_missed:
+                     self.metrics.inc_migrate_and_miss()
+                 if task.is_deadline_missed:
+-                    print(blue_bg(f"{task.id}: {task.release_time}, {task.deadline}, {task.exec_time}, {task.finish_time}, {task.executor.id}"))
++                    print(blue_bg(
++                        f"{task.id}: {task.release_time}, {task.deadline}, {task.exec_time}, {task.finish_time}, {task.executor.id}"))
+                     self.metrics.inc_deadline_miss()
+                 else:
+                     self.metrics.inc_completed_task()
+@@ -383,14 +314,3 @@
+ 
+         print("[DEBUG] No Unprocessed Tasks Found")
+         return None  # No available tasks
+-
+-    def create_retransmitted_task(task: Task) -> Task:
+-        new_id = task.id + "_R"
+-        new_task = Task(
+-            id=new_id,
+-            deadline=task.deadline,
+-            exec_time=task.exec_time,
+-            power=task.power,
+-            creator=task.creator
+-        )
+-        return new_task
+Index: controllers/zone_managers/deepRL/deep_rl_agent.py
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.BaseRevisionTextPatchEP
+<+>import torch\r\nimport torch.nn as nn\r\nimport torch.optim as optim\r\nimport random\r\nimport numpy as np\r\nfrom collections import deque\r\n\r\n\r\nclass DQN(nn.Module):\r\n    \"\"\"\r\n    Neural network for Deep Q-Learning.\r\n    \"\"\"\r\n    def __init__(self, input_dim, output_dim):\r\n        super(DQN, self).__init__()\r\n        self.fc1 = nn.Linear(input_dim, 128)\r\n        self.fc2 = nn.Linear(128, 64)\r\n        self.fc3 = nn.Linear(64, output_dim)\r\n\r\n    def forward(self, x):\r\n        x = torch.relu(self.fc1(x))\r\n        x = torch.relu(self.fc2(x))\r\n        return self.fc3(x)\r\n\r\n\r\nclass DeepRLAgent:\r\n    \"\"\"\r\n    Deep Q-Learning Agent for Task Offloading.\r\n    \"\"\"\r\n    def __init__(self, state_dim, action_dim, lr=0.001, gamma=0.99, epsilon=1.0, epsilon_decay=0.995, min_epsilon=0.01):\r\n        self.state_dim = state_dim\r\n        self.action_dim = action_dim\r\n        self.gamma = gamma  # Discount factor\r\n        self.epsilon = epsilon  # Exploration probability\r\n        self.epsilon_decay = epsilon_decay\r\n        self.min_epsilon = min_epsilon\r\n        self.lr = lr\r\n\r\n        # Experience Replay Memory\r\n        self.memory = deque(maxlen=10000)\r\n\r\n        # Neural Networks\r\n        self.model = DQN(state_dim, action_dim)\r\n        self.target_model = DQN(state_dim, action_dim)\r\n        self.target_model.load_state_dict(self.model.state_dict())\r\n\r\n        # Optimizer and Loss Function\r\n        self.optimizer = optim.Adam(self.model.parameters(), lr=lr)\r\n        self.criterion = nn.MSELoss()\r\n\r\n    def select_action(self, state):\r\n        \"\"\"\r\n        Select an action using ε-greedy strategy.\r\n        \"\"\"\r\n        if random.random() < self.epsilon:\r\n            return random.randint(0, self.action_dim - 1)  # Explore\r\n        state_tensor = torch.FloatTensor(state).unsqueeze(0)\r\n        with torch.no_grad():\r\n            q_values = self.model(state_tensor)\r\n        return torch.argmax(q_values).item()  # Exploit\r\n\r\n    def store_experience(self, state, action, reward, next_state, done):\r\n        \"\"\"\r\n        Store experience in memory.\r\n        \"\"\"\r\n        self.memory.append((state, action, reward, next_state, done))\r\n\r\n    def train(self, batch_size=32):\r\n        \"\"\"\r\n        Train the Deep Q-Network.\r\n        \"\"\"\r\n        if len(self.memory) < batch_size:\r\n            return\r\n\r\n        batch = random.sample(self.memory, batch_size)\r\n        states, actions, rewards, next_states, dones = zip(*batch)\r\n\r\n        states = torch.FloatTensor(states)\r\n        actions = torch.LongTensor(actions).unsqueeze(1)\r\n        rewards = torch.FloatTensor(rewards)\r\n        next_states = torch.FloatTensor(next_states)\r\n        dones = torch.FloatTensor(dones)\r\n\r\n        # Compute Q-values\r\n        q_values = self.model(states).gather(1, actions).squeeze()\r\n\r\n        # Compute Target Q-values\r\n        with torch.no_grad():\r\n            next_q_values = self.target_model(next_states).max(1)[0]\r\n            targets = rewards + self.gamma * next_q_values * (1 - dones)\r\n\r\n        # Update Model\r\n        loss = self.criterion(q_values, targets)\r\n        self.optimizer.zero_grad()\r\n        loss.backward()\r\n        self.optimizer.step()\r\n        # print(f\"------------------------------- epsilon: {self.epsilon}\")\r\n\r\n        # Decay epsilon\r\n        self.epsilon = max(self.min_epsilon, self.epsilon * self.epsilon_decay)\r\n\r\n    def update_target_network(self):\r\n        \"\"\"\r\n        Update target model parameters.\r\n        \"\"\"\r\n        self.target_model.load_state_dict(self.model.state_dict())\r\n\r\n    def save_model(self, filename=\"deep_rl_model.pth\"):\r\n        \"\"\"\r\n        Save trained model.\r\n        \"\"\"\r\n        torch.save(self.model.state_dict(), filename)\r\n\r\n    def load_model(self, filename=\"deep_rl_model.pth\"):\r\n        \"\"\"\r\n        Load trained model.\r\n        \"\"\"\r\n        self.model.load_state_dict(torch.load(filename))\r\n        self.target_model.load_state_dict(self.model.state_dict())\r\n
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/controllers/zone_managers/deepRL/deep_rl_agent.py b/controllers/zone_managers/deepRL/deep_rl_agent.py
+--- a/controllers/zone_managers/deepRL/deep_rl_agent.py	
++++ b/controllers/zone_managers/deepRL/deep_rl_agent.py	
+@@ -38,9 +38,11 @@
+         # Experience Replay Memory
+         self.memory = deque(maxlen=10000)
+ 
++        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
++
+         # Neural Networks
+-        self.model = DQN(state_dim, action_dim)
+-        self.target_model = DQN(state_dim, action_dim)
++        self.model = DQN(state_dim, action_dim).to(self.device)
++        self.target_model = DQN(state_dim, action_dim).to(self.device)
+         self.target_model.load_state_dict(self.model.state_dict())
+ 
+         # Optimizer and Loss Function
+@@ -53,7 +55,7 @@
+         """
+         if random.random() < self.epsilon:
+             return random.randint(0, self.action_dim - 1)  # Explore
+-        state_tensor = torch.FloatTensor(state).unsqueeze(0)
++        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+         with torch.no_grad():
+             q_values = self.model(state_tensor)
+         return torch.argmax(q_values).item()  # Exploit
+@@ -74,11 +76,11 @@
+         batch = random.sample(self.memory, batch_size)
+         states, actions, rewards, next_states, dones = zip(*batch)
+ 
+-        states = torch.FloatTensor(states)
+-        actions = torch.LongTensor(actions).unsqueeze(1)
+-        rewards = torch.FloatTensor(rewards)
+-        next_states = torch.FloatTensor(next_states)
+-        dones = torch.FloatTensor(dones)
++        states = torch.FloatTensor(states).to(self.device)
++        actions = torch.LongTensor(actions).unsqueeze(1).to(self.device)
++        rewards = torch.FloatTensor(rewards).to(self.device)
++        next_states = torch.FloatTensor(next_states).to(self.device)
++        dones = torch.FloatTensor(dones).to(self.device)
+ 
+         # Compute Q-values
+         q_values = self.model(states).gather(1, actions).squeeze()
+@@ -114,5 +116,5 @@
+         """
+         Load trained model.
+         """
+-        self.model.load_state_dict(torch.load(filename))
++        self.model.load_state_dict(torch.load(filename, map_location=self.device))
+         self.target_model.load_state_dict(self.model.state_dict())
