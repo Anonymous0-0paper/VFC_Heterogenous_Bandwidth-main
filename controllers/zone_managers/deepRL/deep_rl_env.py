@@ -136,7 +136,7 @@ class DeepRLEnvironment(gym.Env):
         self.observation_space = spaces.Box(
             low=0, high=1, shape=(6,), dtype=np.float32
         )
-        if Config.Scenario.DEFAULT_SCENARIO == (Config.Scenario.RAIN_AND_ACCIDENT or Config.Scenario.SNOW_AND_ACCIDENT):
+        if (Config.Scenario.DEFAULT_SCENARIO == Config.Scenario.RAIN_AND_ACCIDENT) or (Config.Scenario.DEFAULT_SCENARIO == Config.Scenario.SNOW_AND_ACCIDENT):
             self.ACCIDENTS_DATA = load_accidents_from_xml(f"F:\\BaseVersion\\accidents.xml")
 
     def reset(self):
