@@ -187,3 +187,18 @@ class MetricsController:
 
         plt.savefig(f'transmission_plot_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.Scenario.DEFAULT_SCENARIO}.png')
         print("Plot saved as transmission_plot.png")
+
+        df = pd.DataFrame(self.transmission_daly_per_step)
+        output_dir = "Results_transmission"
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            print(f"Directory '{output_dir}' created.")
+
+        full_path = os.path.join(output_dir, f'transmission_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.Scenario.DEFAULT_SCENARIO}')
+
+        try:
+            df.to_excel(full_path, index=False)
+            print(f"Successfully saved metrics to {full_path}")
+        except Exception as e:
+            print(f"Error saving metrics to Excel file: {e}")
