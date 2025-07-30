@@ -1,3 +1,4 @@
+import math
 import os
 import random
 from collections import defaultdict
@@ -18,6 +19,7 @@ from models.task import Task
 from utils.clock import Clock
 from utils.enums import Layer
 import pandas as pd
+import xml.etree.ElementTree as ET
 
 
 
@@ -32,6 +34,41 @@ def red_bg(text):
 def blue_bg(text):
     return f"\033[44m{text}\033[0m"
 
+def is_in_accident_zone(ACCIDENTS_DATA, current_time, task):
+    for accident in ACCIDENTS_DATA:
+        start_time = accident['time']
+        end_time = start_time + accident['duration']
+
+        if start_time <= current_time <= end_time:
+            distance = math.sqrt(
+                (task.creator.x - accident['x']) ** 2 +
+                (task.creator.y - accident['y']) ** 2
+            )
+
+            if distance <= accident['radius']:
+                return True
+    return False
+
+def load_accidents_from_xml(file_path):
+    try:
+        tree = ET.parse(file_path)
+        root = tree.getroot()
+        accidents_data = []
+        for acc in root.findall('accident'):
+            accidents_data.append({
+                'time': float(acc.get('time')),
+                'duration': float(acc.get('duration')),
+                'x': float(acc.get('x')),
+                'y': float(acc.get('y')),
+                'radius': float(acc.get('radius')),
+            })
+        return accidents_data
+    except FileNotFoundError:
+        print(f"Error: File not found at path '{file_path}'.")
+        return []
+    except ET.ParseError:
+        print(f"Error: File '{file_path}' is not a valid XML file.")
+        return []
 
 class Simulator:
     def __init__(self, loader: Loader, clock: Clock, cloud: CloudNode):
@@ -47,6 +84,8 @@ class Simulator:
         self.retransmission_tasks: Dict[float, List[Task]] = {}
         self.missed_deadline_data: List[Dict] = []
         self.success_deadline_data: List[Dict] = []
+        if (Config.Scenario.DEFAULT_SCENARIO == Config.Scenario.RAIN_AND_ACCIDENT) or (Config.Scenario.DEFAULT_SCENARIO == Config.Scenario.SNOW_AND_ACCIDENT):
+            self.ACCIDENTS_DATA = load_accidents_from_xml(f"F:\\VFC_Heterogenous_Bandwidth-main\\accidents.xml")
 
     def init_simulation(self):
         self.clock.set_current_time(0)
@@ -103,6 +142,23 @@ class Simulator:
                         zone_manager_offload_task.append((proposed_zone_manager, proposed_executor))
         return zone_manager_offload_task
 
+    def compute_task_transmission_multiplier(self, task, current_time):
+        if Config.Scenario.START_TIME <= current_time <= Config.Scenario.FINISH_TIME:
+            if Config.Scenario.DEFAULT_SCENARIO == Config.Scenario.HEAVY_RAIN:
+                task.task_transmission_multiplier = random.uniform(1.12, 1.18)
+            elif Config.Scenario.DEFAULT_SCENARIO == Config.Scenario.HEAVY_SNOW:
+                task.task_transmission_multiplier = random.uniform(1.25, 1.40)
+            elif Config.Scenario.DEFAULT_SCENARIO == Config.Scenario.RAIN_AND_ACCIDENT:
+                if is_in_accident_zone(self.ACCIDENTS_DATA, current_time, task):
+                    task.task_transmission_multiplier = random.uniform(1.15, 1.25)
+                else:
+                    task.task_transmission_multiplier = random.uniform(1.12, 1.18)
+            elif Config.Scenario.DEFAULT_SCENARIO == Config.Scenario.SNOW_AND_ACCIDENT:
+                if is_in_accident_zone(self.ACCIDENTS_DATA, current_time, task):
+                    task.task_transmission_multiplier = random.uniform(1.30, 1.45)
+                else:
+                    task.task_transmission_multiplier = random.uniform(1.15, 1.25)
+
     def choose_executor_and_assign(self, zone_manager_offload_task, task, current_time):
         # if any ZM suggest any device to offload
         if len(zone_manager_offload_task) != 0:
@@ -141,6 +197,7 @@ class Simulator:
                 #     print(red_bg(f"reward: --- {reward} --- {task.id}, {chosen_executor.id}"))
             else:
                 chosen_executor.assign_task(task, current_time)
+                self.compute_task_transmission_multiplier(task, current_time)
             # if reward < 0:
             #     print(chosen_executor.remaining_power)
             if isinstance(chosen_zone_manager, DeepRLZoneManager):
