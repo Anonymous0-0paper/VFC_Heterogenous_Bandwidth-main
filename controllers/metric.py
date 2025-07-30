@@ -195,7 +195,7 @@ class MetricsController:
             os.makedirs(output_dir)
             print(f"Directory '{output_dir}' created.")
 
-        full_path = os.path.join(output_dir, f'transmission_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.Scenario.DEFAULT_SCENARIO}')
+        full_path = os.path.join(output_dir, f'transmission_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.Scenario.DEFAULT_SCENARIO}.xlsx')
 
         try:
             df.to_excel(full_path, index=False)
