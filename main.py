@@ -107,13 +107,21 @@ def plot_load_differences(metrics_controller, num_points=50):
 
 
 def run_one(params):
-    algorithm, method = params
+    algorithm, method, city = params
     Config.ZoneManagerConfig.DEFAULT_ALGORITHM = algorithm
     Config.FinalDeciderMethod.DEFAULT_METHOD = method
 
+    Config.City.DEFAULT_CITY = city
+    if Config.City.DEFAULT_CITY == Config.City.Hamburg1000:
+        Config.Directory.DEFAULT_ZON = Config.Directory.ZON_HAM
+        Config.Directory.DEFAULT_FN = Config.Directory.FN_HAM
+    else:
+        Config.Directory.DEFAULT_ZON = Config.Directory.ZON_MEL
+        Config.Directory.DEFAULT_FN = Config.Directory.FN_MEL
+
     loader = Loader(
-        zone_file= Config.Directory.zon,
-        fixed_fn_file= Config.Directory.fn,
+        zone_file= Config.Directory.DEFAULT_ZON,
+        fixed_fn_file= Config.Directory.DEFAULT_FN,
         mobile_file="./data/vehicles",
         task_file="./data/tasks",
         checkpoint_path="./checkpoints",
@@ -166,7 +174,13 @@ if __name__ == "__main__":
         # Config.ZoneManagerConfig.ALGORITHM_DDPG_BANDWIDTH,
     ]
     methods = [Config.FinalDeciderMethod.MIN_DISTANCE]
-    tasks = [(a, m) for a in algorithms for m in methods]
+    city = [
+        Config.City.Melbourne200,
+        # Config.City.Melbourne600,
+        # Config.City.Hamburg1000,
+    ]
+
+    tasks = [(a, m, c) for a in algorithms for m in methods for c in city]
 
     results = []
     with ProcessPoolExecutor() as executor:

@@ -3,12 +3,25 @@ class Config:
     NEGATIVE_REWARD = -10
 
     class Directory:
-        zon = "./data/hamburg.zon.xml"
-        fn = "./data/hamburg.fn.xml"
+        ZON_HAM = "./data/hamburg.zon.xml"
+        FN_HAM = "./data/hamburg.fn.xml"
+        ZON_MEL = "./data/melbourne.zon.xml"
+        FN_MEL = "./data/melbourne.fn.xml"
+
+        DEFAULT_ZON = ZON_HAM
+        DEFAULT_FN = FN_HAM
+
         # NoiseConfigsAddress = "E:/VANET - Copy/NoiseConfigs"
         # todo: edit this
         RAIN_ACCIDENT = f"D:\\Abbas\\python projects\\VFC_Heterogenous_Bandwidth-main\\data\\accidents\\rain_accidents.xml"
         SNOW_ACCIDENT = f"D:\\Abbas\\python projects\\VFC_Heterogenous_Bandwidth-main\\data\\accidents\\snow_accidents.xml"
+
+    class City:
+        Melbourne200 = "Melbourne200"
+        Melbourne600 = "Melbourne600"
+        Hamburg1000 = "Hamburg1000"
+
+        DEFAULT_CITY = Hamburg1000
 
     class SimulatorConfig:
         SIMULATION_DURATION = 1300
