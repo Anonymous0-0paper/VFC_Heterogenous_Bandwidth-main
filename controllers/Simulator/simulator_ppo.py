@@ -20,10 +20,9 @@ import sys
 import os
 import pandas as pd
 
-sys.path.append(os.path.abspath("E:/VANET - Copy/NoiseConfigs"))
+# sys.path.append(os.path.abspath(Config.Directory.NoiseConfigsAddress))
 
 
-# توابع رنگی برای لاگ‌ها بدون تغییر باقی می‌مانند
 def yellow_bg(text):
     return f"\033[43m{text}\033[0m"
 
@@ -54,8 +53,7 @@ class SimulatorPPO:
         self.missed_deadline_data: List[Dict] = []
         self.success_deadline_data: List[Dict] = []
 
-        # PPO CHANGE: متغیرها برای کنترل آموزش دوره‌ای PPO
-        self.update_timestep = 1000  # تعداد تجربیات لازم برای شروع یک دوره آموزش
+        self.update_timestep = 1000
         self.time_step_counter = 0
 
     def init_simulation(self):
@@ -99,14 +97,10 @@ class SimulatorPPO:
         for zone_manager in zone_managers:
             if zone_manager.can_offload_task(task):
                 if hasattr(zone_manager, "propose_candidate"):
-                    # PPO CHANGE: propose_candidate حالا اطلاعات بیشتری برمی‌گرداند
-                    # خروجی برای PPO: (zone_manager, proposed_executor, ppo_data)
-                    # ppo_data = (state, action, log_prob, value)
                     proposed_zone_manager, proposed_executor, ppo_data = zone_manager.propose_candidate(task, current_time)
 
                     candidate_tuple = (proposed_zone_manager, proposed_executor, ppo_data)
                 else:
-                    # برای الگوریتم‌های غیر RL
                     proposed_executor = zone_manager.offload_task(task, current_time)
                     candidate_tuple = (zone_manager, proposed_executor, None)  # ppo_data is None
 
@@ -119,25 +113,19 @@ class SimulatorPPO:
             finalCandidates = []
 
             for candidate in zone_manager_offload_task:
-                # PPO CHANGE: Unpack ppo_data
                 zone_manager, candidate_executor, ppo_data = candidate
 
-                # PPO CHANGE: ppo_data را به لیست تضعیف اضافه می‌کنیم
                 finalCandidates.append((zone_manager, candidate_executor, ppo_data))
 
-            # فرض می‌کنیم makeFinalChoice می‌تواند ppo_data را نیز برگرداند
             finalChoiceToOffload = FinalChoice().makeFinalChoice(finalCandidates, Config.FinalDeciderMethod.DEFAULT_METHOD)
 
 
-            # PPO CHANGE: Unpack ppo_data از انتخاب نهایی
             chosen_zone_manager, chosen_executor, ppo_data = finalChoiceToOffload
 
             self.task_zone_managers[task.id] = chosen_zone_manager
             self.metrics.inc_node_tasks(chosen_executor.id)
 
-            # PPO CHANGE: منطق ذخیره تجربه و آموزش PPO
             if isinstance(chosen_zone_manager, DeepRLZoneManagerPPO):
-                # ppo_data از قبل در دسترس است
                 state, action, log_prob, value = ppo_data
 
                 reward, _ = chosen_zone_manager.env._compute_reward2(task, chosen_executor, current_time)
@@ -154,17 +142,14 @@ class SimulatorPPO:
 
                 done = self.clock.get_current_time() >= Config.SimulatorConfig.SIMULATION_DURATION
 
-                # ذخیره تجربه در حافظه عامل PPO
                 chosen_zone_manager.agent.store_experience(state, action, reward, done, log_prob, value)
                 self.time_step_counter += 1
 
-                # اگر به تعداد گام‌های مشخص رسیدیم، عامل را آپدیت کن
                 if self.time_step_counter % self.update_timestep == 0 and self.time_step_counter > 0:
                     print(yellow_bg(f"Updating PPO agent at time {current_time}..."))
-                    # تمام مدیران منطقه از یک نمونه عامل استفاده می‌کنند، پس یک بار آپدیت کافیست
                     chosen_zone_manager.agent.update()
 
-            else:  # برای الگوریتم‌های دیگر
+            else:
                 chosen_executor.assign_task(task, current_time)
 
         else:
@@ -345,7 +330,6 @@ class SimulatorPPO:
         full_path = os.path.join(output_dir, filename)
 
         df = pd.DataFrame(self.missed_deadline_data)
-        # index=False از نوشتن ایندکس ردیف‌ها در فایل جلوگیری می‌کند
         try:
             df.to_excel(full_path, index=False)
             print(green_bg(f"Successfully saved missed deadline data to {filename}"))

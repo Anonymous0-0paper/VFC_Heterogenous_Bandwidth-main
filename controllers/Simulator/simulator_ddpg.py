@@ -1,4 +1,3 @@
-import random
 from collections import defaultdict
 from typing import Dict, List
 
@@ -23,10 +22,8 @@ import sys
 import os
 import pandas as pd
 
-sys.path.append(os.path.abspath("E:/VANET - Copy/NoiseConfigs"))
+# sys.path.append(os.path.abspath(Config.Directory.NoiseConfigsAddress))
 
-
-# توابع رنگی برای لاگ در ترمینال
 def yellow_bg(text):
     return f"\033[43m{text}\033[0m"
 
@@ -99,18 +96,15 @@ class SimulatorDDPG:
         for zone_manager in zone_managers:
             if zone_manager.can_offload_task(task):
                 if hasattr(zone_manager, "propose_candidate"):
-                    # <<< CHANGED: دریافت عمل پیوسته از متد propose_candidate
-                    # این متد در نسخه DDPG سه مقدار برمی‌گرداند
                     proposed_zone_manager, proposed_executor, continuous_action = zone_manager.propose_candidate(task,
                                                                                                                  current_time)
                 else:
                     proposed_zone_manager = zone_manager
                     proposed_executor = zone_manager.offload_task(task, current_time)
-                    continuous_action = None  # برای الگوریتم‌های دیگر مقدار پیش‌فرض
+                    continuous_action = None
 
                 if proposed_executor and (
                 proposed_zone_manager, proposed_executor, continuous_action) not in zone_manager_offload_task:
-                    # +++ ADDED: ذخیره کردن عمل پیوسته همراه با کاندیدا
                     zone_manager_offload_task.append((proposed_zone_manager, proposed_executor, continuous_action))
         return zone_manager_offload_task
 
@@ -120,17 +114,10 @@ class SimulatorDDPG:
             finalCandidates = []
 
             for candidate in zone_manager_offload_task:
-                # <<< CHANGED: استخراج عمل پیوسته از لیست کاندیداها
                 zone_manager, candidate_executor, continuous_action = candidate
-
-                # +++ ADDED: اضافه کردن عمل پیوسته به لیست تضعیف سیگنال برای انتخاب نهایی
                 finalCandidates.append((zone_manager, candidate_executor, continuous_action))
 
-            # فرض می‌شود که `makeFinalChoice` می‌تواند مقدار چهارم (continuous_action) را مدیریت کند
             finalChoiceToOffload = FinalChoice().makeFinalChoice(finalCandidates, Config.FinalDeciderMethod.DEFAULT_METHOD)
-
-            # <<< CHANGED: استخراج عمل پیوسته از انتخاب نهایی
-            # فرض بر این است که انتخاب نهایی شامل چهار مقدار است
             chosen_zone_manager, chosen_executor, chosen_continuous_action = finalChoiceToOffload
 
 
@@ -151,9 +138,7 @@ class SimulatorDDPG:
                     chosen_executor.assign_task(task, current_time)
 
                 next_state = chosen_zone_manager.env._get_state(task)
-                # <<< CHANGED: ذخیره کردن عمل پیوسته در بافر تجربه عامل DDPG
-                chosen_zone_manager.agent.store_experience(state, chosen_continuous_action, reward, next_state,
-                                                           done=False)
+                chosen_zone_manager.agent.store_experience(state, chosen_continuous_action, reward, next_state, done=False)
                 chosen_zone_manager.agent.train()
             else:
                 chosen_executor.assign_task(task, current_time)
@@ -343,7 +328,6 @@ class SimulatorDDPG:
         full_path = os.path.join(output_dir, filename)
 
         df = pd.DataFrame(self.missed_deadline_data)
-        # index=False از نوشتن ایندکس ردیف‌ها در فایل جلوگیری می‌کند
         try:
             df.to_excel(full_path, index=False)
             print(green_bg(f"Successfully saved missed deadline data to {filename}"))

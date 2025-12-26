@@ -356,7 +356,6 @@ class Simulator:
         full_path = os.path.join(output_dir, filename)
 
         df = pd.DataFrame(self.missed_deadline_data)
-        # index=False از نوشتن ایندکس ردیف‌ها در فایل جلوگیری می‌کند
         try:
             df.to_excel(full_path, index=False)
             print(green_bg(f"Successfully saved missed deadline data to {filename}"))
