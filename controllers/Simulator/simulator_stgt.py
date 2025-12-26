@@ -56,7 +56,7 @@ class SimulatorSTGT:
         self.l_max = 100.0  # Maximum latency constraint
 
     def init_simulation(self):
-        self.clock.set_current_time(0)
+        self.clock.set_current_time(Config.Scenario.BEGIN_TIME)
         self.zone_managers = self.loader.load_zones()
         self.fixed_fog_nodes = self.loader.load_fixed_zones()
         self.assign_fixed_nodes()
