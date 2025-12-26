@@ -353,8 +353,7 @@ class Generator:
         seen_ids_power = {}
         for time in root.findall('.//timestep'):
             step = round(float(time.get('time')))
-            if step >= Cnf.Scenario.BEGIN_TIME:
-                seen_ids_power = self.generate_one_step(step, time, seen_ids_power)
+            seen_ids_power = self.generate_one_step(step, time, seen_ids_power)
 
         # Save the last chunk if there's any data left
         if self.current_vehicles or self.current_tasks:
