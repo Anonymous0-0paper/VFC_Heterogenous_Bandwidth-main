@@ -36,7 +36,7 @@ def load_accidents_from_xml(file_path):
         return []
 
 class Config:
-    CHUNK_SIZE = 1200  # Chunk size in seconds
+    CHUNK_SIZE = 1300  # Chunk size in seconds
 
     class TaskConfig:
         MIN_EXEC_TIME: float = 12.5  # Slightly increased execution times
@@ -117,8 +117,10 @@ class Generator:
         self.total_task_power_per_step = defaultdict(float)
         self.average_data_size_per_step = defaultdict(float)
 
-        if Cnf.Scenario.DEFAULT_SCENARIO == Cnf.Scenario.RAIN_AND_ACCIDENT or Cnf.Scenario.DEFAULT_SCENARIO == Cnf.Scenario.SNOW_AND_ACCIDENT:
-            self.accidents_data = load_accidents_from_xml(f"F:\\BaseVersion\\accidents.xml")
+        if Cnf.Scenario.DEFAULT_SCENARIO == Cnf.Scenario.RAIN_AND_ACCIDENT:
+            self.accidents_data = load_accidents_from_xml(Cnf.Directory.RAIN_ACCIDENT)
+        elif Cnf.Scenario.DEFAULT_SCENARIO == Cnf.Scenario.SNOW_AND_ACCIDENT:
+            self.accidents_data = load_accidents_from_xml(Cnf.Directory.SNOW_ACCIDENT)
         else:
             self.accidents_data = None
 
@@ -351,7 +353,8 @@ class Generator:
         seen_ids_power = {}
         for time in root.findall('.//timestep'):
             step = round(float(time.get('time')))
-            seen_ids_power = self.generate_one_step(step, time, seen_ids_power)
+            if step >= Cnf.Scenario.BEGIN_TIME:
+                seen_ids_power = self.generate_one_step(step, time, seen_ids_power)
 
         # Save the last chunk if there's any data left
         if self.current_vehicles or self.current_tasks:
