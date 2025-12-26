@@ -1,9 +1,17 @@
 class Config:
-    CHUNK_SIZE = 1200
+    CHUNK_SIZE = 1300
     NEGATIVE_REWARD = -10
 
+    class Directory:
+        zon = "./data/hamburg.zon.xml"
+        fn = "./data/hamburg.fn.xml"
+        # NoiseConfigsAddress = "E:/VANET - Copy/NoiseConfigs"
+        # todo: edit this
+        RAIN_ACCIDENT = f"D:\\Abbas\\python projects\\VFC_Heterogenous_Bandwidth-main\\data\\accidents\\rain_accidents.xml"
+        SNOW_ACCIDENT = f"D:\\Abbas\\python projects\\VFC_Heterogenous_Bandwidth-main\\data\\accidents\\snow_accidents.xml"
+
     class SimulatorConfig:
-        SIMULATION_DURATION = 1200
+        SIMULATION_DURATION = 1300
         BANDWIDTH = 150
 
     class BandwidthCandidates:
@@ -77,8 +85,9 @@ class Config:
         RAIN_AND_ACCIDENT = "Rain and Accident"
         SNOW_AND_ACCIDENT = "Snow and Accident"
 
-        START_TIME = 300
-        FINISH_TIME = 700
+        BEGIN_TIME = 300
+        START_TIME = 650
+        FINISH_TIME = 900
 
         DEFAULT_SCENARIO = BASE_SCENARIO
 
