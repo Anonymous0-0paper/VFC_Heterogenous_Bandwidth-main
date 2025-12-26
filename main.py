@@ -107,9 +107,10 @@ def plot_load_differences(metrics_controller, num_points=50):
 
 
 def run_one(params):
-    algorithm, method, city = params
+    algorithm, method, city, scenario = params
     Config.ZoneManagerConfig.DEFAULT_ALGORITHM = algorithm
     Config.FinalDeciderMethod.DEFAULT_METHOD = method
+    Config.Scenario.DEFAULT_SCENARIO = scenario
 
     Config.City.DEFAULT_CITY = city
     if Config.City.DEFAULT_CITY == Config.City.Hamburg1000:
@@ -179,8 +180,15 @@ if __name__ == "__main__":
         # Config.City.Melbourne600,
         # Config.City.Hamburg1000,
     ]
+    scenarios = [
+        Config.Scenario.BASE_SCENARIO,
+        # Config.Scenario.HEAVY_RAIN,
+        # Config.Scenario.HEAVY_SNOW,
+        # Config.Scenario.RAIN_AND_ACCIDENT,
+        # Config.Scenario.SNOW_AND_ACCIDENT
+    ]
 
-    tasks = [(a, m, c) for a in algorithms for m in methods for c in city]
+    tasks = [(a, m, c, s) for a in algorithms for m in methods for c in city for s in scenarios]
 
     results = []
     with ProcessPoolExecutor() as executor:
