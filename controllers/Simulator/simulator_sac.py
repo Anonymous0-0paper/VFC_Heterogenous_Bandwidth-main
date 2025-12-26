@@ -22,7 +22,7 @@ import os
 import pandas as pd
 
 
-sys.path.append(os.path.abspath("E:/VANET - Copy/NoiseConfigs"))
+# sys.path.append(os.path.abspath(Config.Directory.NoiseConfigsAddress))
 
 
 def yellow_bg(text):
@@ -327,7 +327,6 @@ class SimulatorSAC:
         full_path = os.path.join(output_dir, filename)
 
         df = pd.DataFrame(self.missed_deadline_data)
-        # index=False از نوشتن ایندکس ردیف‌ها در فایل جلوگیری می‌کند
         try:
             df.to_excel(full_path, index=False)
             print(green_bg(f"Successfully saved missed deadline data to {filename}"))
