@@ -185,7 +185,7 @@ class MetricsController:
         plt.ylabel("Transmission Value")
         plt.grid(True)
 
-        plt.savefig(f'transmission_plot_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.Scenario.DEFAULT_SCENARIO}.png')
+        plt.savefig(f'transmission_plot_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.Scenario.DEFAULT_SCENARIO}_{Config.City.DEFAULT_CITY}.png')
         print("Plot saved as transmission_plot.png")
 
         df = pd.DataFrame(self.transmission_daly_per_step)

@@ -13,8 +13,8 @@ class Config:
 
         # NoiseConfigsAddress = "E:/VANET - Copy/NoiseConfigs"
         # todo: edit this
-        RAIN_ACCIDENT = f"D:\\Abbas\\python projects\\VFC_Heterogenous_Bandwidth-main\\data\\accidents\\rain_accidents.xml"
-        SNOW_ACCIDENT = f"D:\\Abbas\\python projects\\VFC_Heterogenous_Bandwidth-main\\data\\accidents\\snow_accidents.xml"
+        RAIN_ACCIDENT = f"E:\\VFC_Heterogenous_Bandwidth-main\\VFC_Heterogenous_Bandwidth-main\\data\\accidents\\rain_accidents.xml"
+        SNOW_ACCIDENT = f"E:\\VFC_Heterogenous_Bandwidth-main\\VFC_Heterogenous_Bandwidth-main\\data\\accidents\\snow_accidents.xml"
 
     class City:
         Melbourne200 = "Melbourne200"
@@ -102,7 +102,7 @@ class Config:
         START_TIME = 650
         FINISH_TIME = 900
 
-        DEFAULT_SCENARIO = BASE_SCENARIO
+        DEFAULT_SCENARIO = SNOW_AND_ACCIDENT
 
     class TaskConfig:
         PACKET_COST_PER_METER = 0.001

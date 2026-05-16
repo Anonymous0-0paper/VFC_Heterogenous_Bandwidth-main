@@ -254,9 +254,9 @@ class Simulator:
 
         self.drop_not_completed_tasks()
         self.metrics.plot_transmission()
-        self.save_missed_deadlines_to_excel(f"missed_deadlines_report_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.FinalDeciderMethod.DEFAULT_METHOD}_{Config.Scenario.DEFAULT_SCENARIO}.xlsx")
-        self.save_success_deadlines_to_excel(f"success_deadlines_report_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.FinalDeciderMethod.DEFAULT_METHOD}_{Config.Scenario.DEFAULT_SCENARIO}.xlsx")
-        self.metrics.save_to_excel(f"final_metrics_summary_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.FinalDeciderMethod.DEFAULT_METHOD}_{Config.Scenario.DEFAULT_SCENARIO}.xlsx")
+        self.save_missed_deadlines_to_excel(f"missed_deadlines_report_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.FinalDeciderMethod.DEFAULT_METHOD}_{Config.Scenario.DEFAULT_SCENARIO}_{Config.City.DEFAULT_CITY}.xlsx")
+        self.save_success_deadlines_to_excel(f"success_deadlines_report_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.FinalDeciderMethod.DEFAULT_METHOD}_{Config.Scenario.DEFAULT_SCENARIO}_{Config.City.DEFAULT_CITY}.xlsx")
+        self.metrics.save_to_excel(f"final_metrics_summary_{Config.ZoneManagerConfig.DEFAULT_ALGORITHM}_{Config.FinalDeciderMethod.DEFAULT_METHOD}_{Config.Scenario.DEFAULT_SCENARIO}_{Config.City.DEFAULT_CITY}.xlsx")
 
     def load_tasks(self, current_time: float) -> Dict[str, List[Task]]:
         tasks: Dict[str, List[Task]] = defaultdict(list)

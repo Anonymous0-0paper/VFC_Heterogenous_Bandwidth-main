@@ -168,17 +168,17 @@ def run_one(params):
 if __name__ == "__main__":
     algorithms = [
         # Config.ZoneManagerConfig.ALGORITHM_DEEP_RL_BANDWIDTH,
-        Config.ZoneManagerConfig.ALGORITHM_PPO_BANDWIDTH,
+        # Config.ZoneManagerConfig.ALGORITHM_PPO_BANDWIDTH,
         # Config.ZoneManagerConfig.ALGORITHM_PROP_FAIR,
-        # Config.ZoneManagerConfig.ALGORITHM_MILP,
+        Config.ZoneManagerConfig.ALGORITHM_MILP,
         # Config.ZoneManagerConfig.ALGORITHM_CVARDQN,
         # Config.ZoneManagerConfig.ALGORITHM_DDPG_BANDWIDTH,
     ]
     methods = [Config.FinalDeciderMethod.MIN_DISTANCE]
     city = [
-        Config.City.Melbourne200,
+        # Config.City.Melbourne200,
         # Config.City.Melbourne600,
-        # Config.City.Hamburg1000,
+        Config.City.Hamburg1000,
     ]
     scenarios = [
         Config.Scenario.BASE_SCENARIO,
